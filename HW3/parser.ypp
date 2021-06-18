@@ -1,0 +1,236 @@
+%{        
+        #include "hw3_output.hpp"
+        #include "SymbolsTable.h"        
+        #include "SemanticalStructs.h"
+        #include <iostream>
+        #include <vector>
+        #include <string>
+        using namespace std;
+        using namespace output;
+        extern int yylineno;
+        int yylex();
+        void yyerror(const char*);
+        SymbolsTable symbols_table;
+%}
+
+%token VOID INT BYTE B BOOL TRUE FALSE RETURN WHILE BREAK CONTINUE SWITCH CASE DEFAULT COLON SC COMMA LBRACE RBRACE ID NUM STRING EOP
+%right IF 
+%right ELSE
+%right ASSIGN
+%left OR
+%left AND
+%left EQUALITY
+%nonassoc RELATIONAL
+%left ADDBINOP
+%left MULBINOP
+%right NOT 
+%left LPAREN RPAREN
+
+%%
+Program : {openGlobalScope(symbols_table);} Funcs EOP {closeGlobalScope(symbols_table);};
+Funcs :  /*epsilon*/
+        | FuncsDecl Funcs {};
+FuncsDecl : RetType ID LPAREN Formals RPAREN LBRACE {
+                openFunctionScope(symbols_table, $1.type, $2.string_val, $4.arguments, yylineno);
+            }
+            Statements RBRACE {
+                closeScope(symbols_table);
+            };
+RetType : Type {$$.type=$1.type;}
+        | VOID {$$.type="VOID";};
+Formals :   /*epsilon*/ {$$.arguments = vector<pair<string,string>>();}
+        | FormalsList {$$.arguments=$1.arguments;};
+FormalsList : FormalDecl {$$.arguments.push_back($1.argument);}
+        | FormalDecl COMMA FormalsList {
+                $$.arguments=$3.arguments;
+                $$.arguments.insert($$.arguments.begin(), 1,$1.argument);};
+FormalDecl : Type ID {$$.argument = pair<string,string>($1.type,$2.string_val);};
+Statements : Statement {}
+        | Statements Statement {};
+Statement : LBRACE {openScope(symbols_table);} Statements RBRACE {closeScope(symbols_table);}
+        | Type ID SC {
+            if(symbols_table.Contains($2.string_val)!=0){
+                errorDef(yylineno, $2.string_val);
+                exit(0);
+            }
+            symbols_table.PushNewRecord($2.string_val, $1.type);
+        }
+        | Type ID ASSIGN Exp SC {
+            if(!checkTypeValidity($1.type,$4.type)){
+                errorMismatch(yylineno);
+                exit(0);
+            }
+            if(symbols_table.Contains($2.string_val)!=0){
+                errorDef(yylineno, $2.string_val);
+                exit(0);
+            }
+            symbols_table.PushNewRecord($2.string_val, $1.type);
+        }
+        | ID ASSIGN Exp SC {
+            if(symbols_table.Contains($1.string_val) != 1 || symbols_table.GetType($1.string_val).find("->") != string::npos){
+                errorUndef(yylineno, $1.string_val);
+                exit(0);
+            }
+            if(!checkTypeValidity(symbols_table.GetType($1.string_val),$3.type)){
+                errorMismatch(yylineno);
+                exit(0);
+            }
+        }
+        | Call SC {}
+        | RETURN SC {
+            if(!isValidRetType("VOID")){
+                errorMismatch(yylineno);
+                exit(0);
+            }
+        }
+        | RETURN Exp SC {
+            if(!isValidRetType($2.type) || $2.type == "VOID"){
+                errorMismatch(yylineno);
+                exit(0);
+            }
+        }
+        | IF LPAREN MarkerOpenIF RPAREN MarkerCloseIF %prec IF
+        | IF LPAREN MarkerOpenIF RPAREN MarkerCloseIF ELSE MarkerOpenELSE MarkerCloseELSE %prec ELSE
+        | WHILE LPAREN Exp {
+            if(!isBool($3.type)){
+                errorMismatch(yylineno);
+                exit(0);
+            }
+            openScope(symbols_table);
+            update_while_flag(1);
+        } RPAREN Statement {
+            closeScope(symbols_table);
+            update_while_flag(-1);
+        }
+        | BREAK SC {is_valid_break(yylineno);}
+        | CONTINUE SC {is_valid_continue(yylineno);}
+        | SWITCH LPAREN Exp {
+                if(!isNumerical($3.type)){
+                    errorMismatch(yylineno);
+                    exit(0);
+                }
+                openScope(symbols_table);
+                update_switch_flag(1);
+            }
+          RPAREN LBRACE CaseList RBRACE {
+            closeScope(symbols_table);
+            update_switch_flag(-1);           
+        };
+MarkerOpenIF : Exp {
+                    if(!isBool($1.type)){
+                        errorMismatch(yylineno);
+                        exit(0);
+                    }
+                    openScope(symbols_table);
+                };
+MarkerCloseIF : Statement {closeScope(symbols_table);};
+MarkerOpenELSE : {openScope(symbols_table);};
+MarkerCloseELSE : Statement {closeScope(symbols_table);};
+Call : ID LPAREN ExpList RPAREN {
+            callFunction(symbols_table, $1.string_val, $3.arguments_type, yylineno);
+            $$.string_val=$1.string_val;
+        }
+        | ID LPAREN RPAREN {
+            callFunction(symbols_table, $1.string_val, vector<string>(), yylineno);
+            $$.string_val=$1.string_val;
+        };
+ExpList : Exp {$$.arguments_type.push_back($1.type);}
+        | Exp COMMA ExpList {
+            $$.arguments_type = $3.arguments_type;
+            $$.arguments_type.push_back($1.type);
+        };
+Type : INT {$$.type="INT";}
+        | BYTE {$$.type="BYTE";}
+        | BOOL {$$.type="BOOL";};
+Exp : LPAREN Exp RPAREN {$$.type=$2.type;}
+        | Exp MULBINOP Exp {
+            if(!checkBinopValidity($1.type,$3.type)){
+                errorMismatch(yylineno);
+                exit(0);
+            }
+            $$.type = getLargestRangeType($1.type,$3.type);
+        }
+        | Exp ADDBINOP Exp {
+            if(!checkBinopValidity($1.type,$3.type)){
+                errorMismatch(yylineno);
+                exit(0);
+            }
+            $$.type = getLargestRangeType($1.type,$3.type);
+        }
+        | ID {
+            if(symbols_table.Contains($1.string_val)!=1 || symbols_table.GetType($1.string_val).find("->") != string::npos){
+                errorUndef(yylineno, $1.string_val);
+                exit(0);
+            }
+            $$.type = symbols_table.GetType($1.string_val);
+        }
+        | Call {
+            if(symbols_table.Contains($1.string_val)!=1 || symbols_table.GetType($1.string_val).find("->") == string::npos){
+                errorUndefFunc(yylineno, $1.string_val);
+                exit(0);
+            }
+            $$.type = symbols_table.GetFunctionType($1.string_val).first;
+        }
+        | NUM  {$$.type="INT";}
+        | NUM B {
+            checkByte($1.string_val, yylineno);
+            $$.type="BYTE";
+        }
+        | STRING {$$.type="STRING";}
+        | TRUE {$$.type="BOOL";}
+        | FALSE {$$.type="BOOL";}
+        | NOT Exp {
+            if(!isBool($2.type)){
+                errorMismatch(yylineno);
+                exit(0);
+            }
+            $$.type=$2.type;
+        }
+        | Exp AND Exp {
+            if(!checkLogicValidity($1.type,$3.type)){
+                errorMismatch(yylineno);
+                exit(0);
+            }
+            $$.type=$1.type;
+        }
+        | Exp OR Exp {
+            if(!checkLogicValidity($1.type,$3.type)){
+                errorMismatch(yylineno);
+                exit(0);
+            }
+            $$.type=$1.type;
+        }
+        | Exp EQUALITY Exp {
+            if(!checkRelopValidity($1.type,$3.type)){
+                errorMismatch(yylineno);
+                exit(0);
+            }
+            $$.type="BOOL";
+        }
+        | Exp RELATIONAL Exp {
+            if(!checkRelopValidity($1.type,$3.type)){
+                errorMismatch(yylineno);
+                exit(0);
+            }
+            $$.type="BOOL";
+        }
+        | LPAREN Type RPAREN Exp {
+            if(!checkTypeValidity($2.type,$4.type)){
+                errorMismatch(yylineno);
+                exit(0);
+            }
+            $$.type=$2.type;
+        };
+CaseList : CaseDecl CaseList {}
+        | CaseDecl {}
+        | DEFAULT COLON Statements {};
+CaseDecl : CASE NUM COLON Statements {};
+
+%%
+
+void yyerror(const char*) { errorSyn(yylineno); exit(0);}
+
+int main() {
+    return yyparse();
+}
+
