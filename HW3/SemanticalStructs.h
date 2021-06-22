@@ -5,16 +5,25 @@
 #include <string>
 #include "SymbolsTable.h"
 #include "hw3_output.hpp"
-
+#include "CodeGeneration.h"
 using namespace std;
 using namespace output;
 
+class Reg{
+public:
+    int reg_num;
+    Reg(int val){
+        reg_num = CodeGeneration::get_new_reg();
+        CodeGeneration::set_reg_with_constant_val(reg_num,val);
+    }
+};
 struct SemanticAttributes{
     string string_val;
     string type;
     pair<string,string> argument;
     vector<pair<string,string>> arguments;
     vector<string> arguments_type; // exp_list
+    Reg reg;
 };
 
 #define YYSTYPE SemanticAttributes
