@@ -115,27 +115,51 @@ namespace CodeGeneration {
         if(logical_op == "or"){
             return check_logical_block_aux(cur_val,list, FIRST, SECOND);
         }
-        else if (logical_op == "and"){
+        else //if (logical_op == "and")
             return check_logical_block_aux(cur_val,list, SECOND, FIRST);
-        }
     }
 
-    void call_phi(vector<pair<int, BranchLabelIndex>> phi_result_list, string true_label, string false_label, int res_reg){
+    void call_phi(vector<pair<int, BranchLabelIndex>> phi_result_list, const string& true_label, const string& false_label, int res_reg){
         bptach_new_label(phi_result_list);
         EMIT(t(res_reg) + " = phi i32 [1 , %" + true_label + "], [0, %" + false_label + "]");
     }
 
-    void finish_and_segment_aux(int cur_val, vector<pair<int,BranchLabelIndex>>& false_list, int res_reg){
-        string true_label = check_logical_block(cur_val, false_list);
-        int true_br = EMIT("br label @");
-        string false_label = bptach_new_label(false_list);
-        int false_br = EMIT("br label @");
-        auto phi_result_list = CodeBuffer::makelist({true_br,FIRST});
-        phi_result_list = CodeBuffer::merge(CodeBuffer::makelist({false_br,SECOND}), phi_result_list);
-        call_phi(phi_result_list, true_label, false_label, res_reg);
+    void finish_logical_block_aux(int cur_val, vector<pair<int,BranchLabelIndex>>& logical_sc_exit_list, int res_reg, const string& logical_op, BranchLabelIndex address){
+        //skeleton is based on OR behavior so Short-Circuiting as accordingly
+       int branch = br_cond(cur_val);
+
+       auto true_list = CodeBuffer::makelist({branch,FIRST});
+       auto false_list = CodeBuffer::makelist({branch,SECOND});
+
+       if(logical_op == "or"){
+           logical_sc_exit_list = CodeBuffer::merge(true_list, logical_sc_exit_list); //set true_list
+       }
+       else if(logical_op == "and"){
+           logical_sc_exit_list = CodeBuffer::merge(false_list, logical_sc_exit_list); //set false_list for sc evaluation
+       }
+
+       string sc_cond = bptach_new_label(logical_sc_exit_list); //true_label or false_label based on what's enabling the short-circuit
+       int sc_jmp = EMIT("br label @");
+
+       //address is provided by the calling function depands on the type of the logical condition and the short-circuit it enables.
+       auto logical_list2 = CodeBuffer::makelist({branch,address}); // the complementary list - to continue iteration to the next block (start code execution)
+       string complementary_label = bptach_new_label(logical_list2);
+       int cmpl_jmp = EMIT("br label @");
+
+        auto phi_result_list = CodeBuffer::makelist({sc_jmp,FIRST});
+        phi_result_list = CodeBuffer::merge(CodeBuffer::makelist({cmpl_jmp,SECOND}), phi_result_list);
+        call_phi(phi_result_list, sc_cond, complementary_label, res_reg);
     }
 
-    void finish_and_segment()
+
+    void finish_logical_block(int cur_val, vector<pair<int,BranchLabelIndex>>& logical_sc_exit_list, int res_reg, const string& logical_op){
+        if(logical_op == "or"){
+            finish_logical_block_aux(cur_val,logical_sc_exit_list,res_reg,logical_op,SECOND); //logical_sc_exit_list should be true_list
+        }
+        else{ // if logical_op == "and"
+            finish_logical_block_aux(cur_val,logical_sc_exit_list,res_reg,logical_op,FIRST); //logical_sc_exit_list should be false_list
+        }
+    }
 
 
 
