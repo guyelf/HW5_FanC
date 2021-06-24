@@ -51,6 +51,36 @@ namespace CodeGeneration {
     void gen_binop(int l_reg, const char *op, int r_reg1, int r_reg2){
         EMIT(t(l_reg) + " = " + op + " i32 " + t(r_reg1) + ", " + t(r_reg2));
     }
+
+    const char *genOpCtoLLVM(const string& op) {
+        if(op == "<") {
+            return "icmp slt";
+        }
+        else if (op == "<=") {
+            return "icmp sle";
+        }
+        else if (op == "==") {
+            return "icmp eq";
+        }
+        else if (op == ">=") {
+            return "icmp sge";
+        }
+        else if (op == ">") {
+            return "icmp sgt";
+        }
+        else if (op == "!=") {
+            return "icmp ne";
+        }
+        else{
+            return "";
+        }
+    }
+
+    void gen_relop(int l_reg, const char *op, int r_reg1, int r_reg2){
+        int res_reg = get_new_reg();
+        gen_binop(res_reg,genOpCtoLLVM(op),r_reg1,r_reg2);
+        zext(l_reg,res_reg,1);
+    }
     void gen_byte_binop(int l_reg, const char *op, int r_reg1, int r_reg2){
         int temp = get_new_reg();
         gen_binop(temp, op, r_reg1, r_reg2);
@@ -110,59 +140,32 @@ namespace CodeGeneration {
         auto new_list = CodeBuffer::makelist({branch,second});
         return bptach_new_label(new_list);
     }
-
-    string check_logical_block(int cur_val, string logical_op, vector<pair<int,BranchLabelIndex>>& list){
+    string check_logical_block(int cur_val, const string& logical_op, vector<pair<int,BranchLabelIndex>>& list){
         if(logical_op == "or"){
             return check_logical_block_aux(cur_val,list, FIRST, SECOND);
         }
-        else //if (logical_op == "and")
+        else {//if(logical_op == "and") || (logical_op == "not" && list.empty(){
             return check_logical_block_aux(cur_val,list, SECOND, FIRST);
+        }
     }
-
     void call_phi(vector<pair<int, BranchLabelIndex>> phi_result_list, const string& true_label, const string& false_label, int res_reg){
         bptach_new_label(phi_result_list);
         EMIT(t(res_reg) + " = phi i32 [1 , %" + true_label + "], [0, %" + false_label + "]");
     }
-
-    void finish_logical_block_aux(int cur_val, vector<pair<int,BranchLabelIndex>>& logical_sc_exit_list, int res_reg, const string& logical_op, BranchLabelIndex address){
-        //skeleton is based on OR behavior so Short-Circuiting as accordingly
-       int branch = br_cond(cur_val);
-
-       auto true_list = CodeBuffer::makelist({branch,FIRST});
-       auto false_list = CodeBuffer::makelist({branch,SECOND});
-
-       if(logical_op == "or"){
-           logical_sc_exit_list = CodeBuffer::merge(true_list, logical_sc_exit_list); //set true_list
-       }
-       else if(logical_op == "and"){
-           logical_sc_exit_list = CodeBuffer::merge(false_list, logical_sc_exit_list); //set false_list for sc evaluation
-       }
-
-       string sc_cond = bptach_new_label(logical_sc_exit_list); //true_label or false_label based on what's enabling the short-circuit
-       int sc_jmp = EMIT("br label @");
-
-       //address is provided by the calling function depands on the type of the logical condition and the short-circuit it enables.
-       auto logical_list2 = CodeBuffer::makelist({branch,address}); // the complementary list - to continue iteration to the next block (start code execution)
-       string complementary_label = bptach_new_label(logical_list2);
-       int cmpl_jmp = EMIT("br label @");
-
-        auto phi_result_list = CodeBuffer::makelist({sc_jmp,FIRST});
-        phi_result_list = CodeBuffer::merge(CodeBuffer::makelist({cmpl_jmp,SECOND}), phi_result_list);
-        call_phi(phi_result_list, sc_cond, complementary_label, res_reg);
-    }
-
-
-    void finish_logical_block(int cur_val, vector<pair<int,BranchLabelIndex>>& logical_sc_exit_list, int res_reg, const string& logical_op){
-        if(logical_op == "or"){
-            finish_logical_block_aux(cur_val,logical_sc_exit_list,res_reg,logical_op,SECOND); //logical_sc_exit_list should be true_list
+    void finish_logical_block(int cur_val, const string& logical_op, vector<pair<int,BranchLabelIndex>>& sc_list, int res_reg){
+        string sc_label = check_logical_block(cur_val, logical_op, sc_list);
+        int sc_br = EMIT("br label @");
+        string second_label = bptach_new_label(sc_list);
+        int second_br = EMIT("br label @");
+        auto phi_result_list = CodeBuffer::makelist({sc_br, FIRST});
+        phi_result_list = CodeBuffer::merge(CodeBuffer::makelist({second_br, SECOND}), phi_result_list);
+        if(logical_op == "or") {
+            call_phi(phi_result_list, sc_label, second_label, res_reg);
         }
-        else{ // if logical_op == "and"
-            finish_logical_block_aux(cur_val,logical_sc_exit_list,res_reg,logical_op,FIRST); //logical_sc_exit_list should be false_list
+        else{ //if(logical_op == "and") || (logical_op == "not" && list.empty(){
+            call_phi(phi_result_list, second_label, sc_label, res_reg);
         }
     }
-
-
-
 };
 
 
