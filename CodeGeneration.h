@@ -14,6 +14,7 @@ using namespace std;
 
 namespace CodeGeneration {
     int last_reg = 0;
+    string while_label = "";
     void initial_emits(){
         EMIT("declare i32 @printf(i8*, ...)");
         EMIT("declare void @exit(i32)");
@@ -86,7 +87,7 @@ namespace CodeGeneration {
         gen_binop(temp, op, r_reg1, r_reg2);
         truncate(l_reg, temp,8); //truncates from 32 to 8 bytes
     }
-    string bptach_new_label(vector<pair<int,BranchLabelIndex>>& list){
+    string bpatch_new_label(vector<pair<int,BranchLabelIndex>>& list){
         string new_address = GEN_LABEL();
         BPATCH(list, new_address);
         return new_address;
@@ -138,7 +139,7 @@ namespace CodeGeneration {
 
         list = CodeBuffer::merge(CodeBuffer::makelist({branch, first}), list);
         auto new_list = CodeBuffer::makelist({branch,second});
-        return bptach_new_label(new_list);
+        return bpatch_new_label(new_list);
     }
     string check_logical_block(int cur_val, const string& logical_op, vector<pair<int,BranchLabelIndex>>& list){
         if(logical_op == "or"){
@@ -149,13 +150,13 @@ namespace CodeGeneration {
         }
     }
     void call_phi(vector<pair<int, BranchLabelIndex>> phi_result_list, const string& true_label, const string& false_label, int res_reg){
-        bptach_new_label(phi_result_list);
+        bpatch_new_label(phi_result_list);
         EMIT(t(res_reg) + " = phi i32 [1 , %" + true_label + "], [0, %" + false_label + "]");
     }
     void finish_logical_block(int cur_val, const string& logical_op, vector<pair<int,BranchLabelIndex>>& sc_list, int res_reg){
         string sc_label = check_logical_block(cur_val, logical_op, sc_list);
         int sc_br = EMIT("br label @");
-        string second_label = bptach_new_label(sc_list);
+        string second_label = bpatch_new_label(sc_list);
         int second_br = EMIT("br label @");
         auto phi_result_list = CodeBuffer::makelist({sc_br, FIRST});
         phi_result_list = CodeBuffer::merge(CodeBuffer::makelist({second_br, SECOND}), phi_result_list);
@@ -165,6 +166,74 @@ namespace CodeGeneration {
         else{ //if(logical_op == "and") || (logical_op == "not" && list.empty(){
             call_phi(phi_result_list, second_label, sc_label, res_reg);
         }
+    }
+
+    //Control Flows: While, IF and Else Blocks:
+
+    void jmp_to_constant_addr(string addr){ //used for while
+        EMIT("br label %" + addr);
+    }
+
+    //General blocks
+    void open_block() {
+        auto open_label_list = CodeBuffer::makelist({EMIT("br label @"), FIRST});
+        bpatch_new_label(open_label_list);
+    }
+    //gets a nextlist for the given block and assigns it with the new label to jump to after the block is finished
+    string close_block(vector<pair<int,BranchLabelIndex>>& nextlist){
+        int br_cond_addr = EMIT("br label @");
+        auto exit_block_addr = CodeBuffer::makelist({br_cond_addr,FIRST});
+        nextlist = CodeBuffer::merge(exit_block_addr,nextlist);
+        return bpatch_new_label(nextlist);
+    }
+
+    //if statement
+    void open_if(int reg_cond,vector<pair<int,BranchLabelIndex>>& false_list){
+        open_block();
+        int reg_bool_var = get_new_reg();
+        truncate(reg_bool_var,reg_cond,1);
+        int branch = br_cond(reg_bool_var);
+
+        auto true_list = CodeBuffer::makelist({branch,FIRST});
+        bpatch_new_label(true_list);
+
+        auto false_jmp= CodeBuffer::makelist({branch,SECOND});
+        false_list = CodeBuffer::merge(false_jmp,false_list);
+    }
+
+    void start_else(vector<pair<int,BranchLabelIndex>>& false_list, vector<pair<int,BranchLabelIndex>>& next_list){
+        int br_cond_addr = EMIT("br label @");
+        auto exit_block_addr = CodeBuffer::makelist({br_cond_addr,FIRST});
+        next_list = CodeBuffer::merge(exit_block_addr,next_list);
+        bpatch_new_label(false_list);
+    }
+
+    //while statement
+    void open_while(int reg_cond,vector<pair<int,BranchLabelIndex>>& loop_end){
+        int loop_head = EMIT("br label @");
+        while_label = GEN_LABEL();
+        BPATCH(CodeBuffer::makelist({loop_head, FIRST}),while_label);
+
+        int reg_bool_var = get_new_reg();
+        truncate(reg_bool_var,reg_cond,1);
+        int branch = br_cond(reg_bool_var);
+
+        auto loop_body = CodeBuffer::makelist({branch, FIRST});
+        bpatch_new_label(loop_body);
+
+        auto loop_end_label = CodeBuffer::makelist({branch,SECOND});
+        loop_end = CodeBuffer::merge(loop_end_label,loop_end);
+    }
+
+    string close_while(vector<pair<int,BranchLabelIndex>>& false_list, vector<pair<int,BranchLabelIndex>>& next_list){
+        jmp_to_constant_addr(while_label); //br label %loop_head
+
+        //bpatch the end of the while
+        string next_label = GEN_LABEL();
+
+        BPATCH(next_list,next_label);
+        BPATCH(false_list, next_label);
+        return next_label;
     }
 };
 
