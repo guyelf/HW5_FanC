@@ -23,12 +23,12 @@ namespace CodeGeneration {
     void zext(int out_reg, int in_reg, int bytes);
     void gen_binop(int l_reg, string op, int r_reg1, int r_reg2);
     string convertType(const string& type);
-    const char *convertBinop(const string& op);
-    const char *convertRelop(const string& op);
+    string convertBinop(const string& op);
+    string convertRelop(const string& op);
     void gen_relop(int l_reg, string op, int r_reg1, int r_reg2);
-    void gen_byte_binop(int l_reg, const char *op, int r_reg1, int r_reg2);
+    void gen_byte_binop(int l_reg, string op, int r_reg1, int r_reg2);
     string bpatch_new_label(vector<pair<int,BranchLabelIndex>>& list);
-    void compare(int l_reg, const char *op, int r_reg1, int r_reg2);
+    void compare(int l_reg, string op, int r_reg1, int r_reg2);
     int br_cond(int bool_reg);
     void call_function(const string& ret_val, const string& func_name, const vector<pair<string,int>>& args);
     void division(int l_reg, int r_reg1, int r_reg2);
@@ -48,7 +48,6 @@ namespace CodeGeneration {
     void close_case(vector<pair<int,BranchLabelIndex>>& next_list);
     int compare_vals(int val1, int val2);
     void switchBlock(int exp_reg, string label, vector<pair<string,string>>& case_list);
-    void alloca(int reg_ptr, int size);
     void store_reg(int stack_ptr, int reg_ptr);
     void assign(int l_reg, int r_reg);
     void store_default_val(int ptr);
@@ -57,6 +56,7 @@ namespace CodeGeneration {
     pair<unordered_map<string, int>, int> define_function(string ret_type, string func_name, vector<string>& arg_names);
     void return_function(const string& cur_func_ret_type);
     int get_element_ptr(int base_ptr, int offset);
+    void _alloca(int reg_ptr, int _size);
 };
 
 

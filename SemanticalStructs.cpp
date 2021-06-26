@@ -63,16 +63,16 @@ void closeFunctionScope() {
     CodeGeneration::return_function(scope_stack.scopes.back().func_ret_type);
 }
 
-void openScope(SymbolsTable& symbols_table, int is_while = 0, int is_switch = 0) {
+void openScope(SymbolsTable& symbols_table, int is_while, int is_switch, int is_if) {
     while_count += is_while;
     switch_count += is_switch;
     auto last_scope = scope_stack.scopes.back();
     scope_stack.OpenScope(last_scope.func_ret_type,last_scope.stack_base_ptr,last_scope.arg_names_map,
-                          last_scope.id_reg_map, is_while);
+                          last_scope.id_reg_map, is_while, is_if);
     symbols_table.PushNewTable();
 }
 
-void closeScope(SymbolsTable& symbols_table, int is_while = 0, int is_switch = 0) {
+void closeScope(SymbolsTable& symbols_table, int is_while, int is_switch) {
     while_count += is_while;
     switch_count += is_switch;
     endScope();
@@ -177,7 +177,6 @@ int genNotExp(int reg1) {
     return ret_reg;
 }
 
-
 void checkLogicalExp(int reg1, string op, vector<pair<int, BranchLabelIndex>> &sc_list) {
     CodeGeneration::check_logical_block(reg1,op,sc_list);
 }
@@ -188,16 +187,36 @@ int finishLogicalExp(int reg1, string op, vector<pair<int, BranchLabelIndex>> &s
     return ret_reg;
 }
 
-void openIf(int cond_reg, vector<pair<int, BranchLabelIndex>> &sc_list) {
+void openIf(int cond_reg) {
+    vector<pair<int, BranchLabelIndex>> sc_list;
+    scope_stack.setList(sc_list);
     CodeGeneration::open_if(cond_reg,sc_list);
 }
 
-void openElse(vector<pair<int, BranchLabelIndex>> &sc_list, vector<pair<int, BranchLabelIndex>> &next_list) {
-    CodeGeneration::open_else(sc_list,next_list);
+void closeIf(){
+    vector<pair<int, BranchLabelIndex>> next_list;
+    scope_stack.setList(next_list);
+    CodeGeneration::close_block(next_list);
 }
 
-void closeBlock(vector<pair<int, BranchLabelIndex>> &next_list) {
-    CodeGeneration::close_block(next_list);
+void openElse() {
+    for(int i=scope_stack.scopes.size()-1; i>=0; i--){
+        if(scope_stack.scopes[i].is_if){
+            auto sc_list = scope_stack.scopes[i].while_list;
+            auto next_list = scope_stack.scopes[i].while_next_list;
+            CodeGeneration::close_block(sc_list);
+            CodeGeneration::open_else(sc_list,next_list);
+        }
+    }
+}
+
+void closeBlock() {
+    for(int i=scope_stack.scopes.size()-1; i>=0; i--){
+        if(scope_stack.scopes[i].is_if){
+            auto next_list = scope_stack.scopes[i].while_next_list;
+            CodeGeneration::close_block(next_list);
+        }
+    }
 }
 
 void openWhile(int cond_reg) {

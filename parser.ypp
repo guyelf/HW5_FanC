@@ -104,9 +104,9 @@ Statement :
             }
             returnFunction($2.type);
         }
-        | IF LPAREN MarkerOpenIF {openIf($1.exp_reg, $$.sc_list);} RPAREN MarkerCloseIF {closeBlock($$.while_next_list);} %prec IF
-        | IF LPAREN MarkerOpenIF {openIf($1.exp_reg, $$.sc_list);} RPAREN MarkerCloseIF {closeBlock($$.sc_list);} ELSE
-            MarkerOpenELSE {openElse($$.sc_list, $$.while_next_list);} MarkerCloseELSE {closeBlock($$.while_next_list);} %prec ELSE
+        | IF LPAREN MarkerOpenIF RPAREN MarkerCloseIF MarkerCloseIFBlock %prec IF
+        | IF LPAREN MarkerOpenIF RPAREN MarkerCloseIF ELSE
+            MarkerOpenELSE MarkerCloseELSE %prec ELSE
         | WHILE LPAREN Exp {
             if(!isBool($3.type)){
                 errorMismatch(yylineno);
@@ -136,28 +136,30 @@ MarkerOpenIF : Exp {
                         errorMismatch(yylineno);
                         exit(0);
                     }
-                    openScope(symbols_table);
+                    openScope(symbols_table,0,0,1);
+                    openIf($1.exp_reg);
                 };
 MarkerCloseIF : Statement {closeScope(symbols_table);};
-MarkerOpenELSE : {openScope(symbols_table);};
-MarkerCloseELSE : Statement {closeScope(symbols_table);};
+MarkerCloseIFBlock : Statement {closeIf();};
+MarkerOpenELSE : {openScope(symbols_table); openElse();};
+MarkerCloseELSE : Statement {closeScope(symbols_table); closeBlock();};
 Call : ID LPAREN ExpList RPAREN {
-            $$.exp_reg = callFunction(symbols_table, $1.string_val, $3.arguments, yylineno);
+            $$.exp_reg = callFunction(symbols_table, $1.string_val, $3.exp_arguments, yylineno);
             $$.string_val=$1.string_val;
         }
         | ID LPAREN RPAREN {
             $$.exp_reg = callFunction(symbols_table, $1.string_val, vector<pair<string,int>>(), yylineno);
             $$.string_val=$1.string_val;
         };
-ExpList : Exp {$$.arguments.push_back({$1.type,$1.exp_reg});}
+ExpList : Exp {$$.exp_arguments.push_back({$1.type,$1.exp_reg});}
         | Exp COMMA ExpList {
-            $$.arguments = $3.arguments;
-            $$.arguments.push_back({$1.type,$1.exp_reg});
+            $$.exp_arguments = $3.exp_arguments;
+            $$.exp_arguments.push_back({$1.type,$1.exp_reg});
         };
 Type : INT {$$.type="INT";}
         | BYTE {$$.type="BYTE";}
         | BOOL {$$.type="BOOL";};
-Exp : LPAREN Exp RPAREN {$$.type=$2.type; $$.exp_reg = $2.exp_reg}
+Exp : LPAREN Exp RPAREN {$$.type=$2.type; $$.exp_reg = $2.exp_reg;}
         | Exp MULBINOP Exp {
             if(!checkBinopValidity($1.type,$3.type)){
                 errorMismatch(yylineno);
@@ -272,7 +274,7 @@ Exp : LPAREN Exp RPAREN {$$.type=$2.type; $$.exp_reg = $2.exp_reg}
 CaseList : CaseDecl CaseList
           {
               $$.case_list=$2.case_list;
-              $$.case_list.insert($$.case_list.begin(), 1,{$1.case_num,$1.label});};
+              $$.case_list.insert($$.case_list.begin(), 1,{$1.case_num,$1.label});
           }
         | CaseDecl {$$.case_list.push_back({$1.case_num,$1.label});}
         | DEFAULT COLON Statements {$$.label = gen_label();};

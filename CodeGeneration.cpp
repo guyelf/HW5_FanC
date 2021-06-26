@@ -63,7 +63,7 @@ namespace CodeGeneration {
     string convertType(const string& type) {
         return type == "VOID"? "void" : "i32";
     }
-    const char *convertBinop(const string& op) {
+    string convertBinop(const string& op) {
         if(op == "*") {
             return "mul";
         }
@@ -80,7 +80,7 @@ namespace CodeGeneration {
             return "";
         }
     }
-    const char *convertRelop(const string& op) {
+    string convertRelop(const string& op) {
         if(op == "<") {
             return "icmp slt";
         }
@@ -110,7 +110,7 @@ namespace CodeGeneration {
         zext(l_reg,res_reg,1);
     }
 
-    void gen_byte_binop(int l_reg, const char *op, int r_reg1, int r_reg2){
+    void gen_byte_binop(int l_reg, string op, int r_reg1, int r_reg2){
         int temp = get_new_reg();
         gen_binop(temp, op, r_reg1, r_reg2);
         truncate(l_reg, temp,8); //truncates from 32 to 8 bytes
@@ -122,7 +122,7 @@ namespace CodeGeneration {
         return new_address;
     }
 
-    void compare(int l_reg, const char *op, int r_reg1, int r_reg2){
+    void compare(int l_reg, string op, int r_reg1, int r_reg2){
         EMIT(t(l_reg) + " = icmp " + op + " i32 " + t(r_reg1) + ", " + t(r_reg2));
     }
 
@@ -341,11 +341,6 @@ namespace CodeGeneration {
 //        close_block(next_list);
 //    }
 
-    void alloca(int reg_ptr, int size = 0){
-        string s_size = size? ", i32 " + to_string(size) : "";
-        EMIT(t(reg_ptr) + " = alloca i32" + s_size);
-    }
-
     void store_reg(int stack_ptr, int reg_ptr){
         EMIT("store i32 %" + to_string(stack_ptr) + ", i32* " + t(reg_ptr));
     }
@@ -377,12 +372,12 @@ namespace CodeGeneration {
         unordered_map<string, int> arg_name_to_ptr;
         for(int i = 0; i < arg_names.size(); i++){
             int reg_ptr = get_new_reg();
-            alloca(reg_ptr);
+            _alloca(reg_ptr,0);
             store_reg(i, reg_ptr);
             arg_name_to_ptr[arg_names[i]] = reg_ptr;
         }
         int stack_base_ptr = get_new_reg();
-        alloca(stack_base_ptr,50);
+        _alloca(stack_base_ptr,50);
         return {arg_name_to_ptr, stack_base_ptr};
     }
 
@@ -396,5 +391,10 @@ namespace CodeGeneration {
         int ret_reg = get_new_reg();
         EMIT(t(ret_reg) + " = getelementptr i32, i32* " + t(base_ptr) + ", i32" + to_string(offset));
         return ret_reg;
+    }
+
+    void _alloca(int reg_ptr, int _size) {
+        string s_size = _size ? ", i32 " + to_string(_size) : "";
+        EMIT(t(reg_ptr) + " = _alloca i32" + s_size);
     }
 };
