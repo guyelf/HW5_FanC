@@ -62,6 +62,16 @@ string SymbolsTable::GetType(string name) {
     return string();
 }
 
+int SymbolsTable::GetOffset(string name) {
+    for (Table table:tablesStack) {
+        if(table.Find(name)){
+            return table.GetOffset(name);
+        }
+    }
+    return -404; // unreachable
+}
+
+
 pair<string,vector<string>> SymbolsTable::GetFunctionType(string name) {
     pair<string,vector<string>> res;
     string type = GetType(name);

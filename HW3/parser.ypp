@@ -28,32 +28,43 @@
 
 %%
 Program : {openGlobalScope(symbols_table);} Funcs EOP {closeGlobalScope(symbols_table);};
+
 Funcs :  /*epsilon*/
         | FuncsDecl Funcs {};
+
 FuncsDecl : RetType ID LPAREN Formals RPAREN LBRACE {
                 openFunctionScope(symbols_table, $1.type, $2.string_val, $4.arguments, yylineno);
             }
             Statements RBRACE {
+                closeFunctionScope();
                 closeScope(symbols_table);
             };
+
 RetType : Type {$$.type=$1.type;}
         | VOID {$$.type="VOID";};
+
 Formals :   /*epsilon*/ {$$.arguments = vector<pair<string,string>>();}
         | FormalsList {$$.arguments=$1.arguments;};
+
 FormalsList : FormalDecl {$$.arguments.push_back($1.argument);}
         | FormalDecl COMMA FormalsList {
                 $$.arguments=$3.arguments;
                 $$.arguments.insert($$.arguments.begin(), 1,$1.argument);};
+
 FormalDecl : Type ID {$$.argument = pair<string,string>($1.type,$2.string_val);};
+
 Statements : Statement {}
         | Statements Statement {};
-Statement : LBRACE {openScope(symbols_table);} Statements RBRACE {closeScope(symbols_table);}
+
+Statement :
+        LBRACE {openScope(symbols_table);} Statements RBRACE {closeScope(symbols_table);}
         | Type ID SC {
             if(symbols_table.Contains($2.string_val)!=0){
                 errorDef(yylineno, $2.string_val);
                 exit(0);
             }
             symbols_table.PushNewRecord($2.string_val, $1.type);
+            gen_local_var_to_default(symbols_table, $2.string_val);
         }
         | Type ID ASSIGN Exp SC {
             if(!checkTypeValidity($1.type,$4.type)){
@@ -65,6 +76,7 @@ Statement : LBRACE {openScope(symbols_table);} Statements RBRACE {closeScope(sym
                 exit(0);
             }
             symbols_table.PushNewRecord($2.string_val, $1.type);
+            gen_local_var_to_reg(symbols_table, $2.string_val, $4.exp_reg);
         }
         | ID ASSIGN Exp SC {
             if(symbols_table.Contains($1.string_val) != 1 || symbols_table.GetType($1.string_val).find("->") != string::npos){
@@ -75,6 +87,7 @@ Statement : LBRACE {openScope(symbols_table);} Statements RBRACE {closeScope(sym
                 errorMismatch(yylineno);
                 exit(0);
             }
+            set_local_var_to_reg(symbols_table, $1.string_val, $3.exp_reg);
         }
         | Call SC {}
         | RETURN SC {
@@ -82,39 +95,41 @@ Statement : LBRACE {openScope(symbols_table);} Statements RBRACE {closeScope(sym
                 errorMismatch(yylineno);
                 exit(0);
             }
+            returnFunction("VOID");
         }
         | RETURN Exp SC {
             if(!isValidRetType($2.type) || $2.type == "VOID"){
                 errorMismatch(yylineno);
                 exit(0);
             }
+            returnFunction($2.type);
         }
-        | IF LPAREN MarkerOpenIF RPAREN MarkerCloseIF %prec IF
-        | IF LPAREN MarkerOpenIF RPAREN MarkerCloseIF ELSE MarkerOpenELSE MarkerCloseELSE %prec ELSE
+        | IF LPAREN MarkerOpenIF {openIf($1.exp_reg, $$.sc_list);} RPAREN MarkerCloseIF {closeBlock($$.while_next_list);} %prec IF
+        | IF LPAREN MarkerOpenIF {openIf($1.exp_reg, $$.sc_list);} RPAREN MarkerCloseIF {closeBlock($$.sc_list);} ELSE
+            MarkerOpenELSE {openElse($$.sc_list, $$.while_next_list);} MarkerCloseELSE {closeBlock($$.while_next_list);} %prec ELSE
         | WHILE LPAREN Exp {
             if(!isBool($3.type)){
                 errorMismatch(yylineno);
                 exit(0);
             }
-            openScope(symbols_table);
-            update_while_flag(1);
+            openScope(symbols_table, 1, 0);
+            openWhile($3.exp_reg);
         } RPAREN Statement {
-            closeScope(symbols_table);
-            update_while_flag(-1);
+            closeWhile();
+            closeScope(symbols_table, -1, 0);
         }
-        | BREAK SC {is_valid_break(yylineno);}
-        | CONTINUE SC {is_valid_continue(yylineno);}
+        | BREAK SC {is_valid_break(yylineno); breakBlock();}
+        | CONTINUE SC {is_valid_continue(yylineno); continueWhile();}
         | SWITCH LPAREN Exp {
                 if(!isNumerical($3.type)){
                     errorMismatch(yylineno);
                     exit(0);
                 }
-                openScope(symbols_table);
-                update_switch_flag(1);
+                openScope(symbols_table, 0, 1);
             }
           RPAREN LBRACE CaseList RBRACE {
-            closeScope(symbols_table);
-            update_switch_flag(-1);           
+            switchBlock($3.exp_reg, $6.label, $6.case_list);
+            closeScope(symbols_table, 0, -1);
         };
 MarkerOpenIF : Exp {
                     if(!isBool($1.type)){
@@ -127,28 +142,30 @@ MarkerCloseIF : Statement {closeScope(symbols_table);};
 MarkerOpenELSE : {openScope(symbols_table);};
 MarkerCloseELSE : Statement {closeScope(symbols_table);};
 Call : ID LPAREN ExpList RPAREN {
-            callFunction(symbols_table, $1.string_val, $3.arguments_type, yylineno);
+            $$.exp_reg = callFunction(symbols_table, $1.string_val, $3.arguments, yylineno);
             $$.string_val=$1.string_val;
         }
         | ID LPAREN RPAREN {
-            callFunction(symbols_table, $1.string_val, vector<string>(), yylineno);
+            $$.exp_reg = callFunction(symbols_table, $1.string_val, vector<pair<string,int>>(), yylineno);
             $$.string_val=$1.string_val;
         };
-ExpList : Exp {$$.arguments_type.push_back($1.type);}
+ExpList : Exp {$$.arguments.push_back({$1.type,$1.exp_reg});}
         | Exp COMMA ExpList {
-            $$.arguments_type = $3.arguments_type;
-            $$.arguments_type.push_back($1.type);
+            $$.arguments = $3.arguments;
+            $$.arguments.push_back({$1.type,$1.exp_reg});
         };
 Type : INT {$$.type="INT";}
         | BYTE {$$.type="BYTE";}
         | BOOL {$$.type="BOOL";};
-Exp : LPAREN Exp RPAREN {$$.type=$2.type;}
+Exp : LPAREN Exp RPAREN {$$.type=$2.type; $$.exp_reg = $2.exp_reg}
         | Exp MULBINOP Exp {
             if(!checkBinopValidity($1.type,$3.type)){
                 errorMismatch(yylineno);
                 exit(0);
             }
             $$.type = getLargestRangeType($1.type,$3.type);
+            $$.exp_reg = genBinop($1.exp_reg, $2.string_val, $3.exp_reg);
+
         }
         | Exp ADDBINOP Exp {
             if(!checkBinopValidity($1.type,$3.type)){
@@ -156,6 +173,7 @@ Exp : LPAREN Exp RPAREN {$$.type=$2.type;}
                 exit(0);
             }
             $$.type = getLargestRangeType($1.type,$3.type);
+            $$.exp_reg = genBinop($1.exp_reg, $2.string_val, $3.exp_reg);
         }
         | ID {
             if(symbols_table.Contains($1.string_val)!=1 || symbols_table.GetType($1.string_val).find("->") != string::npos){
@@ -163,6 +181,7 @@ Exp : LPAREN Exp RPAREN {$$.type=$2.type;}
                 exit(0);
             }
             $$.type = symbols_table.GetType($1.string_val);
+            $$.exp_reg = get_reg_from_id(symbols_table, $1.string_val);
         }
         | Call {
             if(symbols_table.Contains($1.string_val)!=1 || symbols_table.GetType($1.string_val).find("->") == string::npos){
@@ -170,35 +189,61 @@ Exp : LPAREN Exp RPAREN {$$.type=$2.type;}
                 exit(0);
             }
             $$.type = symbols_table.GetFunctionType($1.string_val).first;
+            $$.exp_reg = $1.exp_reg;
         }
-        | NUM  {$$.type="INT";}
+        | NUM  {
+            $$.type="INT";
+            $$.exp_reg = set_value_to_new_reg($1.string_val);
+        }
         | NUM B {
             checkByte($1.string_val, yylineno);
             $$.type="BYTE";
+            $$.exp_reg = set_value_to_new_reg($1.string_val);
         }
         | STRING {$$.type="STRING";}
-        | TRUE {$$.type="BOOL";}
-        | FALSE {$$.type="BOOL";}
+        | TRUE  {
+            $$.type="BOOL";
+            $$.exp_reg = set_value_to_new_reg("1");}
+        | FALSE {
+            $$.type="BOOL";
+            $$.exp_reg = set_value_to_new_reg("0");}
         | NOT Exp {
             if(!isBool($2.type)){
                 errorMismatch(yylineno);
                 exit(0);
             }
             $$.type=$2.type;
+            $$.exp_reg = genNotExp($2.exp_reg);
         }
-        | Exp AND Exp {
-            if(!checkLogicValidity($1.type,$3.type)){
+        | Exp AND {
+            if(!isBool($1.type)){
+                errorMismatch(yylineno);
+                exit(0);
+            }
+            checkLogicalExp($1.exp_reg,"and",$$.sc_list);
+        }
+        Exp {
+            if(!isBool($3.type)){
                 errorMismatch(yylineno);
                 exit(0);
             }
             $$.type=$1.type;
+            $$.exp_reg = finishLogicalExp($3.exp_reg, "and", $$.sc_list);
         }
-        | Exp OR Exp {
-            if(!checkLogicValidity($1.type,$3.type)){
+        | Exp OR {
+            if(!isBool($1.type)){
+                errorMismatch(yylineno);
+                exit(0);
+            }
+            checkLogicalExp($1.exp_reg,"or",$$.sc_list);
+        }
+        Exp {
+            if(!isBool($3.type)){
                 errorMismatch(yylineno);
                 exit(0);
             }
             $$.type=$1.type;
+            $$.exp_reg = finishLogicalExp($3.exp_reg, "or", $$.sc_list);
         }
         | Exp EQUALITY Exp {
             if(!checkRelopValidity($1.type,$3.type)){
@@ -206,6 +251,7 @@ Exp : LPAREN Exp RPAREN {$$.type=$2.type;}
                 exit(0);
             }
             $$.type="BOOL";
+            $$.exp_reg = genRelop($1.exp_reg, $2.string_val, $3.exp_reg);
         }
         | Exp RELATIONAL Exp {
             if(!checkRelopValidity($1.type,$3.type)){
@@ -213,6 +259,7 @@ Exp : LPAREN Exp RPAREN {$$.type=$2.type;}
                 exit(0);
             }
             $$.type="BOOL";
+            $$.exp_reg = genRelop($1.exp_reg, $2.string_val, $3.exp_reg);
         }
         | LPAREN Type RPAREN Exp {
             if(!checkTypeValidity($2.type,$4.type)){
@@ -220,11 +267,20 @@ Exp : LPAREN Exp RPAREN {$$.type=$2.type;}
                 exit(0);
             }
             $$.type=$2.type;
+            $$.exp_reg = $4.exp_reg;
         };
-CaseList : CaseDecl CaseList {}
-        | CaseDecl {}
-        | DEFAULT COLON Statements {};
-CaseDecl : CASE NUM COLON Statements {};
+CaseList : CaseDecl CaseList
+          {
+              $$.case_list=$2.case_list;
+              $$.case_list.insert($$.case_list.begin(), 1,{$1.case_num,$1.label});};
+          }
+        | CaseDecl {$$.case_list.push_back({$1.case_num,$1.label});}
+        | DEFAULT COLON Statements {$$.label = gen_label();};
+CaseDecl : CASE NUM COLON Statements
+        {
+            $$.case_num = $2.string_val;
+            $$.label = gen_label();
+        };
 
 %%
 

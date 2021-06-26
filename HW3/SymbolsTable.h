@@ -21,6 +21,7 @@ public:
     void PushNewFunction(string name, string type, vector<pair<string,string>> arguments);
     void PopTable();
     string GetType(string name);
+    int GetOffset(string name);
     pair<string,vector<string>> GetFunctionType(string name);
     int Contains(string name);
     void printST();

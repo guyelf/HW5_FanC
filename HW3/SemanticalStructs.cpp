@@ -1,10 +1,11 @@
 #include "SemanticalStructs.h"
 
-string cur_func_ret_type = "";
-int while_flag = 0;
-int switch_flag = 0;
+int while_count;
+int switch_count;
+ScopesStack scope_stack;
 
 void openGlobalScope(SymbolsTable& symbols_table) {
+    CodeGeneration::initial_emits();
     symbols_table = SymbolsTable();
 
     vector<string> print_types = {"STRING"};
@@ -26,7 +27,9 @@ void closeGlobalScope(SymbolsTable& symbols_table) {
         errorMainMissing();
         exit(0);
     }
-    closeScope(symbols_table);
+    endScope();
+    symbols_table.PopTable();
+    CodeGeneration::printBuffs();
 }
 
 void openFunctionScope(SymbolsTable& symbols_table, string ret_type, string func_name, vector<pair<string,string>> arguments, int lineno) {
@@ -41,33 +44,192 @@ void openFunctionScope(SymbolsTable& symbols_table, string ret_type, string func
             exit(0);
         }
     }
-    vector<string> types;
+    vector<string> arg_types;
+    vector<string> arg_names;
+
     for(auto pair:arguments){
-        types.push_back(pair.first);
+        arg_types.push_back(pair.first);
+        arg_names.push_back(pair.second);
     }
-    symbols_table.PushNewFunction(func_name, makeFunctionType(ret_type,types),arguments);
-    cur_func_ret_type = ret_type;
+    symbols_table.PushNewFunction(func_name, makeFunctionType(ret_type, arg_types), arguments);
+    auto allocations = CodeGeneration::define_function(ret_type,func_name,arg_names);
+    auto arg_names_map = allocations.first;
+    auto stack_base_ptr = allocations.second;
+    auto id_reg_map = unordered_map<string,int>();
+    scope_stack.OpenScope(ret_type, stack_base_ptr,arg_names_map,id_reg_map);
 }
 
-void openScope(SymbolsTable& symbols_table) {
+void closeFunctionScope() {
+    CodeGeneration::return_function(scope_stack.scopes.back().func_ret_type);
+}
+
+void openScope(SymbolsTable& symbols_table, int is_while = 0, int is_switch = 0) {
+    while_count += is_while;
+    switch_count += is_switch;
+    auto last_scope = scope_stack.scopes.back();
+    scope_stack.OpenScope(last_scope.func_ret_type,last_scope.stack_base_ptr,last_scope.arg_names_map,
+                          last_scope.id_reg_map, is_while);
     symbols_table.PushNewTable();
 }
 
-void closeScope(SymbolsTable& symbols_table) {
+void closeScope(SymbolsTable& symbols_table, int is_while = 0, int is_switch = 0) {
+    while_count += is_while;
+    switch_count += is_switch;
     endScope();
     symbols_table.PopTable();
+    scope_stack.CloseScope();
 }
 
-void callFunction(SymbolsTable& symbols_table, string func_name, vector<string> arguments_type, int lineno) {
+int callFunction(SymbolsTable& symbols_table, string func_name, vector<pair<string,int>> arguments, int lineno) {
     if(symbols_table.Contains(func_name) != 1 || symbols_table.GetType(func_name).find("->") == string::npos){
         errorUndefFunc(lineno, func_name);
         exit(0);
     }
-    vector<string> expected_arguments_type = symbols_table.GetFunctionType(func_name).second;
+    auto function_type = symbols_table.GetFunctionType(func_name);
+    string ret_type = function_type.first;
+    vector<string> expected_arguments_type = function_type.second;
+    vector<string> arguments_type;
+    for(auto arg:arguments){
+        arguments_type.push_back(arg.first);
+    }
     if(!isValidArgsFunctionCall(arguments_type, expected_arguments_type)){
         errorPrototypeMismatch(lineno, func_name, expected_arguments_type);
         exit(0);
     }
+    int ret_reg = CodeGeneration::get_new_reg();
+    CodeGeneration::call_function(ret_type, func_name, arguments);
+    return ret_reg;
+}
+
+void returnFunction(string ret_type) {
+    CodeGeneration::return_function(ret_type);
+}
+
+void gen_local_var_to_default(SymbolsTable symbols_table, string id) {
+    int base_ptr = scope_stack.scopes.back().stack_base_ptr;
+    int reg_ptr = CodeGeneration::get_element_ptr(base_ptr, symbols_table.GetOffset(id));
+    CodeGeneration::store_default_val(reg_ptr);
+    scope_stack.scopes.back().id_reg_map[id] = reg_ptr;
+}
+
+void gen_local_var_to_reg(SymbolsTable symbols_table, string id, int r_reg) {
+    int base_ptr = scope_stack.scopes.back().stack_base_ptr;
+    int reg_ptr = CodeGeneration::get_element_ptr(base_ptr, symbols_table.GetOffset(id));
+    CodeGeneration::assign(reg_ptr, r_reg);
+    scope_stack.scopes.back().id_reg_map[id] = reg_ptr;
+}
+
+
+void set_local_var_to_reg(SymbolsTable symbols_table, string id, int r_reg) {
+    int offset = symbols_table.GetOffset(id);
+    int reg_ptr;
+    if (offset < 0){
+        reg_ptr = scope_stack.scopes.back().arg_names_map[id];
+    }
+    else {
+        reg_ptr = scope_stack.scopes.back().id_reg_map[id];
+    }
+    CodeGeneration::assign(reg_ptr, r_reg);
+}
+
+
+int get_reg_from_id(SymbolsTable symbols_table, string id) {
+    int ret_reg = CodeGeneration::get_new_reg();
+    int offset = symbols_table.GetOffset(id);
+    int id_ptr;
+    if(offset < 0){ //function argument
+        id_ptr = scope_stack.scopes.back().arg_names_map[id];
+    }
+    else {
+        id_ptr = scope_stack.scopes.back().id_reg_map[id];
+    }
+    CodeGeneration::load_reg(id_ptr, ret_reg);
+    return ret_reg;
+}
+
+int set_value_to_new_reg(string string_val) {
+    int val = stoi(string_val);
+    return CodeGeneration::gen_new_reg_with_constant_val(val);
+}
+
+int genBinop(int reg1, string op, int reg2) {
+    int ret_reg = CodeGeneration::get_new_reg();
+    string llvm_op = CodeGeneration::convertBinop(op);
+    if(llvm_op == "div")
+        CodeGeneration::division(ret_reg, reg1, reg2);
+    else {
+        CodeGeneration::gen_binop(ret_reg, llvm_op, reg1, reg2);
+    }
+    return ret_reg;
+}
+
+int genRelop(int reg1, string op, int reg2) {
+    int ret_reg = CodeGeneration::get_new_reg();
+    string llvm_op = CodeGeneration::convertRelop(op);
+    CodeGeneration::gen_relop(ret_reg,llvm_op, reg1, reg2);
+    return ret_reg;
+}
+
+int genNotExp(int reg1) {
+    int ret_reg = CodeGeneration::get_new_reg();
+    auto empty_list = vector<pair<int,BranchLabelIndex>>();
+    CodeGeneration::finish_logical_block(reg1,"not",empty_list, ret_reg);
+    return ret_reg;
+}
+
+
+void checkLogicalExp(int reg1, string op, vector<pair<int, BranchLabelIndex>> &sc_list) {
+    CodeGeneration::check_logical_block(reg1,op,sc_list);
+}
+
+int finishLogicalExp(int reg1, string op, vector<pair<int, BranchLabelIndex>> &sc_list) {
+    int ret_reg = CodeGeneration::get_new_reg();
+    CodeGeneration::finish_logical_block(reg1, op, sc_list, ret_reg);
+    return ret_reg;
+}
+
+void openIf(int cond_reg, vector<pair<int, BranchLabelIndex>> &sc_list) {
+    CodeGeneration::open_if(cond_reg,sc_list);
+}
+
+void openElse(vector<pair<int, BranchLabelIndex>> &sc_list, vector<pair<int, BranchLabelIndex>> &next_list) {
+    CodeGeneration::open_else(sc_list,next_list);
+}
+
+void closeBlock(vector<pair<int, BranchLabelIndex>> &next_list) {
+    CodeGeneration::close_block(next_list);
+}
+
+void openWhile(int cond_reg) {
+    vector<pair<int, BranchLabelIndex>> loop_end;
+    scope_stack.setList(loop_end);
+    CodeGeneration::open_while(cond_reg, loop_end);
+}
+
+void closeWhile() {
+    vector<pair<int, BranchLabelIndex>> next_list;
+    scope_stack.setNextList(next_list);
+    CodeGeneration::close_while(scope_stack.scopes.back().while_list, next_list);
+}
+
+void continueWhile() {
+    CodeGeneration::jmp_to_while_label();
+}
+
+void breakBlock() {
+    for(int i=scope_stack.scopes.size()-1; i>=0; i--){
+        if(scope_stack.scopes[i].is_while){
+            auto next_list = scope_stack.scopes[i].while_next_list;
+            CodeGeneration::close_block(next_list);
+        }
+    }
+}
+
+string gen_label() {
+    return GEN_LABEL();
+}
+void switchBlock(int exp_reg, string label, vector<pair<string,string>>& case_list) {
+    CodeGeneration::switchBlock(exp_reg, label, case_list);
 }
 
 void checkByte(string byte, int lineno) {
@@ -131,25 +293,27 @@ bool isValidArgsFunctionCall(vector<string> argument_types, vector<string> exp_a
 }
 
 bool isValidRetType(string ret_type){
-    return checkTypeValidity(cur_func_ret_type,ret_type);
+    return checkTypeValidity(scope_stack.scopes.back().func_ret_type,ret_type);
 }
 
 void update_while_flag(int val){
-    while_flag += val;
+    while_count += val;
 }
+
 void update_switch_flag(int val){
-    switch_flag += val;
+    switch_count += val;
 }
 
 void is_valid_break(int lineno){
-    if(!while_flag && !switch_flag){
+    if(!while_count && !switch_count){
         errorUnexpectedBreak(lineno);
         exit(0);
     }
 }
 void is_valid_continue(int lineno){
-    if(!while_flag){
+    if(!while_count){
         errorUnexpectedContinue(lineno);
         exit(0);
     }
 }
+

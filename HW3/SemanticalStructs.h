@@ -6,24 +6,24 @@
 #include "SymbolsTable.h"
 #include "hw3_output.hpp"
 #include "CodeGeneration.h"
+#include "ScopesStack.h"
+
 using namespace std;
 using namespace output;
 
-class Reg{
-public:
-    int reg_num;
-    Reg(int val){
-        reg_num = CodeGeneration::get_new_reg();
-        CodeGeneration::set_reg_with_constant_val(reg_num,val);
-    }
-};
+
 struct SemanticAttributes{
+    string case_num;
+    string label;
+    int exp_reg;
     string string_val;
     string type;
     pair<string,string> argument;
     vector<pair<string,string>> arguments;
     vector<string> arguments_type; // exp_list
-    Reg reg;
+    vector<pair<int,BranchLabelIndex>> sc_list;
+    vector<pair<int,BranchLabelIndex>> next_list;
+    vector<pair<string,string>> case_list;
 };
 
 #define YYSTYPE SemanticAttributes
@@ -31,9 +31,34 @@ struct SemanticAttributes{
 void openGlobalScope(SymbolsTable& symbols_table);
 void closeGlobalScope(SymbolsTable& symbols_table);
 void openFunctionScope(SymbolsTable& symbols_table, string ret_type, string func_name, vector<pair<string,string>> arguments, int lineno);
-void openScope(SymbolsTable& symbols_table);
-void closeScope(SymbolsTable& symbols_table);
-void callFunction(SymbolsTable& symbols_table, string func_name,vector<string> arguments_type,int lineno);
+void closeFunctionScope();
+void openScope(SymbolsTable& symbols_table, int is_while, int is_switch);
+void closeScope(SymbolsTable& symbols_table, int is_while, int is_switch);
+int callFunction(SymbolsTable& symbols_table, string func_name,vector<pair<string,int>> arguments,int lineno);
+void returnFunction(string ret_type);
+void gen_local_var_to_default(SymbolsTable symbols_table, string id);
+void gen_local_var_to_reg(SymbolsTable symbols_table, string id, int r_reg);
+void set_local_var_to_reg(SymbolsTable symbols_table, string id, int r_reg);
+int set_value_to_new_reg(const char *string_val);
+int get_reg_from_id(SymbolsTable symbols_table, string id);
+int genBinop(int reg1, string op, int reg2);
+int genRelop(int reg1, string op, int reg2);
+int genNotExp(int reg1);
+void checkLogicalExp(int reg1, string op,vector<pair<int,BranchLabelIndex>> &sc_list);
+int finishLogicalExp(int reg1, string op,vector<pair<int,BranchLabelIndex>> &sc_list);
+void openIf(int cond_reg, vector<pair<int,BranchLabelIndex>> &sc_list);
+void openElse(vector<pair<int,BranchLabelIndex>> &sc_list, vector<pair<int,BranchLabelIndex>> &next_list);
+void closeBlock(vector<pair<int,BranchLabelIndex>> &next_list);
+void openWhile(int cond_reg);
+void closeWhile();
+void continueWhile();
+void breakBlock();
+string gen_label();
+void switchBlock(int exp_reg, string label, vector<pair<string,string>>& case_list);
+
+
+
+
 void checkByte(string byte, int lineno);
 bool isNumerical(string type);
 bool isBool(string type);

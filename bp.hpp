@@ -27,13 +27,13 @@ public:
 	//writes command to the buffer, returns its location in the buffer
 	int emit(const std::string &command);
 
-	//gets a pair<int,BranchLabelIndex> item of the form {buffer_location, branch_label_index} and creates a list for it
+	//gets a pair<int,BranchLabelIndex> item of the form {buffer_location, branch_label_index} and creates a while_list for it
 	static vector<pair<int,BranchLabelIndex>> makelist(pair<int,BranchLabelIndex> item);
 
 	//merges two lists of {buffer_location, branch_label_index} items
 	static vector<pair<int,BranchLabelIndex>> merge(const vector<pair<int,BranchLabelIndex>> &l1,const vector<pair<int,BranchLabelIndex>> &l2);
 
-	/* accepts a list of {buffer_location, branch_label_index} items and a label.
+	/* accepts a while_list of {buffer_location, branch_label_index} items and a label.
 	For each {buffer_location, branch_label_index} item in address_list, backpatches the branch command 
 	at buffer_location, at index branch_label_index (FIRST or SECOND), with the label.
 	note - the function expects to find a '@' char in place of the missing label.
