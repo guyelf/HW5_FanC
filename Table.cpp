@@ -17,3 +17,12 @@ string Table::GetType(string name) {
     }
     return string();
 }
+
+int Table::GetOffset(string name) {
+    for(SymbolsTableRecord record:scope_table){
+        if(name == record.name){
+            return record.offset;
+        }
+    }
+    return -404; // unreachable
+}

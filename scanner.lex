@@ -53,10 +53,10 @@ UNCLOSED_STRING \"[^\"]*
 "{"		 	 		{return LBRACE;}
 "}"		 	 		{return RBRACE;}
 "="		 	 		{return ASSIGN;}
-{EQUALITY} 	 		{return EQUALITY;}
-{RELATIONAL}        {return RELATIONAL;}
-{MULBINOP} 	 		{return MULBINOP;}
-{ADDBINOP}          {return ADDBINOP;}
+{EQUALITY} 	 		{yylval.string_val = yytext; return EQUALITY;}
+{RELATIONAL}        {yylval.string_val = yytext; return RELATIONAL;}
+{MULBINOP} 	 		{yylval.string_val = yytext; return MULBINOP;}
+{ADDBINOP}          {yylval.string_val = yytext; return ADDBINOP;}
 {COMMENT} 	 		{}
 {ID} 	 	 		{yylval.string_val = yytext; return ID;}
 {NUM} 	 	 		{yylval.string_val = yytext; return NUM;}

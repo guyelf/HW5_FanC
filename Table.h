@@ -24,6 +24,7 @@ public:
     void InsertNewRecord(string name, string type, int offset);
     bool Find(string name);
     string GetType(string name);
+    int GetOffset(string name);
 };
 
 
