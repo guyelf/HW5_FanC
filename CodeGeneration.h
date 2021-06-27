@@ -201,7 +201,7 @@ namespace CodeGeneration {
         false_list = CodeBuffer::merge(false_jmp,false_list);
     }
 
-    void start_else(vector<pair<int,BranchLabelIndex>>& false_list, vector<pair<int,BranchLabelIndex>>& next_list){
+    void start_else_r(vector<pair<int,BranchLabelIndex>>& false_list, vector<pair<int,BranchLabelIndex>>& next_list){
         int br_cond_addr = EMIT("br label @");
         auto exit_block_addr = CodeBuffer::makelist({br_cond_addr,FIRST});
         next_list = CodeBuffer::merge(exit_block_addr,next_list);
