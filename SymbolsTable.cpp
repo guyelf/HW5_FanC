@@ -28,9 +28,9 @@ void SymbolsTable::PushNewFunction(string name, string type, vector<pair<string,
 }
 
 void SymbolsTable::PopTable() {
-    for(SymbolsTableRecord record : tablesStack.back().scope_table){
-        printID(record.name, record.offset, record.type);
-    }
+//    for(SymbolsTableRecord record : tablesStack.back().scope_table){
+//        printID(record.name, record.offset, record.type);
+//    }
     tablesStack.pop_back();
     offsetsStack.pop_back();
 }

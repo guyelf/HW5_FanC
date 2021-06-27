@@ -56,8 +56,7 @@ FormalDecl : Type ID {$$.argument = pair<string,string>($1.type,$2.string_val);}
 Statements : Statement {}
         | Statements Statement {};
 
-Statement :
-        LBRACE {openScope(symbols_table);} Statements RBRACE {closeScope(symbols_table);}
+Statement : LBRACE {openScope(symbols_table);} Statements RBRACE {closeScope(symbols_table);}
         | Type ID SC {
             if(symbols_table.Contains($2.string_val)!=0){
                 errorDef(yylineno, $2.string_val);
@@ -104,9 +103,8 @@ Statement :
             }
             returnFunction($2.type);
         }
-        | IF LPAREN MarkerOpenIF RPAREN MarkerCloseIF MarkerCloseIFBlock %prec IF
-        | IF LPAREN MarkerOpenIF RPAREN MarkerCloseIF ELSE
-            MarkerOpenELSE MarkerCloseELSE %prec ELSE
+        | IF LPAREN MarkerOpenIF RPAREN MarkerCloseIF %prec IF
+        | IF LPAREN MarkerOpenIF RPAREN MarkerCloseIF ELSE MarkerOpenELSE MarkerCloseELSE %prec ELSE
         | WHILE LPAREN Exp {
             if(!isBool($3.type)){
                 errorMismatch(yylineno);
@@ -128,7 +126,7 @@ Statement :
                 openScope(symbols_table, 0, 1);
             }
           RPAREN LBRACE CaseList RBRACE {
-            switchBlock($3.exp_reg, $6.label, $6.case_list);
+            switchBlock($3.exp_reg, $7.label, $7.case_list);
             closeScope(symbols_table, 0, -1);
         };
 MarkerOpenIF : Exp {
@@ -139,8 +137,7 @@ MarkerOpenIF : Exp {
                     openScope(symbols_table,0,0,1);
                     openIf($1.exp_reg);
                 };
-MarkerCloseIF : Statement {closeScope(symbols_table);};
-MarkerCloseIFBlock : Statement {closeIf();};
+MarkerCloseIF : Statement {closeScope(symbols_table);closeIf();};
 MarkerOpenELSE : {openScope(symbols_table); openElse();};
 MarkerCloseELSE : Statement {closeScope(symbols_table); closeBlock();};
 Call : ID LPAREN ExpList RPAREN {
@@ -167,7 +164,6 @@ Exp : LPAREN Exp RPAREN {$$.type=$2.type; $$.exp_reg = $2.exp_reg;}
             }
             $$.type = getLargestRangeType($1.type,$3.type);
             $$.exp_reg = genBinop($1.exp_reg, $2.string_val, $3.exp_reg);
-
         }
         | Exp ADDBINOP Exp {
             if(!checkBinopValidity($1.type,$3.type)){
@@ -225,12 +221,12 @@ Exp : LPAREN Exp RPAREN {$$.type=$2.type; $$.exp_reg = $2.exp_reg;}
             checkLogicalExp($1.exp_reg,"and",$$.sc_list);
         }
         Exp {
-            if(!isBool($3.type)){
+            if(!isBool($4.type)){
                 errorMismatch(yylineno);
                 exit(0);
             }
             $$.type=$1.type;
-            $$.exp_reg = finishLogicalExp($3.exp_reg, "and", $$.sc_list);
+            $$.exp_reg = finishLogicalExp($4.exp_reg, "and", $$.sc_list);
         }
         | Exp OR {
             if(!isBool($1.type)){
@@ -240,12 +236,12 @@ Exp : LPAREN Exp RPAREN {$$.type=$2.type; $$.exp_reg = $2.exp_reg;}
             checkLogicalExp($1.exp_reg,"or",$$.sc_list);
         }
         Exp {
-            if(!isBool($3.type)){
+            if(!isBool($4.type)){
                 errorMismatch(yylineno);
                 exit(0);
             }
             $$.type=$1.type;
-            $$.exp_reg = finishLogicalExp($3.exp_reg, "or", $$.sc_list);
+            $$.exp_reg = finishLogicalExp($4.exp_reg, "or", $$.sc_list);
         }
         | Exp EQUALITY Exp {
             if(!checkRelopValidity($1.type,$3.type)){
@@ -286,7 +282,7 @@ CaseDecl : CASE NUM COLON Statements
 
 %%
 
-void yyerror(const char*) { errorSyn(yylineno); exit(0);}
+void yyerror(const char* c) {errorSyn(yylineno); exit(0);}
 
 int main() {
     return yyparse();

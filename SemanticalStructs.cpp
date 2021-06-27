@@ -27,7 +27,7 @@ void closeGlobalScope(SymbolsTable& symbols_table) {
         errorMainMissing();
         exit(0);
     }
-    endScope();
+//    endScope();
     symbols_table.PopTable();
     CodeGeneration::printBuffs();
 }
