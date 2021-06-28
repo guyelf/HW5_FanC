@@ -37,6 +37,7 @@ FuncsDecl : RetType ID LPAREN Formals RPAREN LBRACE {
             }
             Statements RBRACE {
                 closeFunctionScope();
+                closeFunction();
                 closeScope(symbols_table);
             };
 
@@ -101,17 +102,17 @@ Statement : LBRACE {openScope(symbols_table);} Statements RBRACE {closeScope(sym
                 errorMismatch(yylineno);
                 exit(0);
             }
-            returnFunction($2.type);
+            returnFunction($2.type, $2.exp_reg);
         }
-        | IF LPAREN MarkerOpenIF RPAREN MarkerCloseIF %prec IF
+        | IF LPAREN MarkerOpenIF RPAREN MarkerCloseIF %prec IF {closeBlock();}
         | IF LPAREN MarkerOpenIF RPAREN MarkerCloseIF ELSE MarkerOpenELSE MarkerCloseELSE %prec ELSE
-        | WHILE LPAREN Exp {
-            if(!isBool($3.type)){
+        | WHILE LPAREN {$$.label = genWhileLabel();} Exp {
+            if(!isBool($4.type)){
                 errorMismatch(yylineno);
                 exit(0);
             }
-            openScope(symbols_table, 1, 0);
-            openWhile($3.exp_reg);
+            openScope(symbols_table, 1, 0, 0, 0, $3.label);
+            openWhile($4.exp_reg);
         } RPAREN Statement {
             closeWhile();
             closeScope(symbols_table, -1, 0);
@@ -124,9 +125,10 @@ Statement : LBRACE {openScope(symbols_table);} Statements RBRACE {closeScope(sym
                     exit(0);
                 }
                 openScope(symbols_table, 0, 1);
+                openSwitch();
             }
           RPAREN LBRACE CaseList RBRACE {
-            switchBlock($3.exp_reg, $7.label, $7.case_list);
+            switchBlock($3.exp_reg, $7.default_label, $7.case_list); //should be defual_label instead of label here defualt can point to default and can point to next list
             closeScope(symbols_table, 0, -1);
         };
 MarkerOpenIF : Exp {
@@ -137,9 +139,9 @@ MarkerOpenIF : Exp {
                     openScope(symbols_table,0,0,1);
                     openIf($1.exp_reg);
                 };
-MarkerCloseIF : Statement {closeScope(symbols_table);closeIf();};
-MarkerOpenELSE : {openScope(symbols_table); openElse();};
-MarkerCloseELSE : Statement {closeScope(symbols_table); closeBlock();};
+MarkerCloseIF : Statement {closeIf(); closeScope(symbols_table);};
+MarkerOpenELSE : {openScope(symbols_table,0,0,0,1); openElse();};
+MarkerCloseELSE : Statement {closeElseBlock(); closeScope(symbols_table);};
 Call : ID LPAREN ExpList RPAREN {
             $$.exp_reg = callFunction(symbols_table, $1.string_val, $3.exp_arguments, yylineno);
             $$.string_val=$1.string_val;
@@ -198,7 +200,8 @@ Exp : LPAREN Exp RPAREN {$$.type=$2.type; $$.exp_reg = $2.exp_reg;}
             $$.type="BYTE";
             $$.exp_reg = set_value_to_new_reg($1.string_val);
         }
-        | STRING {$$.type="STRING";}
+        | STRING {$$.type="STRING"; 
+                  $$.exp_reg = set_string_val_to_new_reg($1.string_val);  }
         | TRUE  {
             $$.type="BOOL";
             $$.exp_reg = set_value_to_new_reg("1");}
@@ -226,7 +229,7 @@ Exp : LPAREN Exp RPAREN {$$.type=$2.type; $$.exp_reg = $2.exp_reg;}
                 exit(0);
             }
             $$.type=$1.type;
-            $$.exp_reg = finishLogicalExp($4.exp_reg, "and", $$.sc_list);
+            $$.exp_reg = finishLogicalExp($4.exp_reg, "and", $3.sc_list);
         }
         | Exp OR {
             if(!isBool($1.type)){
@@ -241,7 +244,7 @@ Exp : LPAREN Exp RPAREN {$$.type=$2.type; $$.exp_reg = $2.exp_reg;}
                 exit(0);
             }
             $$.type=$1.type;
-            $$.exp_reg = finishLogicalExp($4.exp_reg, "or", $$.sc_list);
+            $$.exp_reg = finishLogicalExp($4.exp_reg, "or", $3.sc_list);
         }
         | Exp EQUALITY Exp {
             if(!checkRelopValidity($1.type,$3.type)){
@@ -270,15 +273,16 @@ Exp : LPAREN Exp RPAREN {$$.type=$2.type; $$.exp_reg = $2.exp_reg;}
 CaseList : CaseDecl CaseList
           {
               $$.case_list=$2.case_list;
+              $$.default_label = $2.default_label;
               $$.case_list.insert($$.case_list.begin(), 1,{$1.case_num,$1.label});
           }
         | CaseDecl {$$.case_list.push_back({$1.case_num,$1.label});}
-        | DEFAULT COLON Statements {$$.label = gen_label();};
-CaseDecl : CASE NUM COLON Statements
-        {
+        | DEFAULT COLON {$$.default_label = gen_label();} Statements {closeCase(); $$.default_label = $3.default_label;}; 
+CaseDecl : CASE NUM COLON {
             $$.case_num = $2.string_val;
             $$.label = gen_label();
-        };
+            } 
+            Statements {$$.case_num = $4.case_num; $$.label = $4.label;};
 
 %%
 

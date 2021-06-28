@@ -15,6 +15,7 @@ using namespace output;
 struct SemanticAttributes{
     string case_num;
     string label;
+    string default_label;
     int exp_reg;
     string string_val;
     string type;
@@ -33,14 +34,16 @@ void openGlobalScope(SymbolsTable& symbols_table);
 void closeGlobalScope(SymbolsTable& symbols_table);
 void openFunctionScope(SymbolsTable& symbols_table, string ret_type, string func_name, vector<pair<string,string>> arguments, int lineno);
 void closeFunctionScope();
-void openScope(SymbolsTable& symbols_table, int is_while = 0, int is_switch = 0, int is_if = 0);
+void openScope(SymbolsTable& symbols_table, int is_while = 0, int is_switch = 0, int is_if = 0, int is_else = 0, string while_label = "");
 void closeScope(SymbolsTable& symbols_table, int is_while = 0, int is_switch = 0);
 int callFunction(SymbolsTable& symbols_table, string func_name,vector<pair<string,int>> arguments,int lineno);
-void returnFunction(string ret_type);
+void closeFunction();
+void returnFunction(string ret_type, int reg=-1);
 void gen_local_var_to_default(SymbolsTable symbols_table, string id);
 void gen_local_var_to_reg(SymbolsTable symbols_table, string id, int r_reg);
 void set_local_var_to_reg(SymbolsTable symbols_table, string id, int r_reg);
 int set_value_to_new_reg(string string_val);
+int set_string_val_to_new_reg(string string_val);
 int get_reg_from_id(SymbolsTable symbols_table, string id);
 int genBinop(int reg1, string op, int reg2);
 int genRelop(int reg1, string op, int reg2);
@@ -51,12 +54,17 @@ void openIf(int cond_reg);
 void closeIf();
 void openElse();
 void closeBlock();
+void closeElseBlock();
+string genWhileLabel();
 void openWhile(int cond_reg);
 void closeWhile();
 void continueWhile();
 void breakBlock();
 string gen_label();
+void openSwitch();
+void closeCase();
 void switchBlock(int exp_reg, string label, vector<pair<string,string>>& case_list);
+
 
 
 

@@ -2,6 +2,7 @@
 
 int while_count;
 int switch_count;
+vector<pair<int,BranchLabelIndex>> last_if_next_list;
 ScopesStack scope_stack;
 
 void openGlobalScope(SymbolsTable& symbols_table) {
@@ -63,12 +64,12 @@ void closeFunctionScope() {
     CodeGeneration::return_function(scope_stack.scopes.back().func_ret_type);
 }
 
-void openScope(SymbolsTable& symbols_table, int is_while, int is_switch, int is_if) {
+void openScope(SymbolsTable& symbols_table, int is_while, int is_switch, int is_if, int is_else, string while_label) {
     while_count += is_while;
     switch_count += is_switch;
     auto last_scope = scope_stack.scopes.back();
     scope_stack.OpenScope(last_scope.func_ret_type,last_scope.stack_base_ptr,last_scope.arg_names_map,
-                          last_scope.id_reg_map, is_while, is_if);
+                          last_scope.id_reg_map, is_while,is_switch, is_if,is_else, while_label);
     symbols_table.PushNewTable();
 }
 
@@ -98,12 +99,15 @@ int callFunction(SymbolsTable& symbols_table, string func_name, vector<pair<stri
         exit(0);
     }
     int ret_reg = CodeGeneration::get_new_reg();
-    CodeGeneration::call_function(ret_type, func_name, arguments);
+    CodeGeneration::call_function(ret_type, func_name, arguments, ret_reg);
     return ret_reg;
 }
 
-void returnFunction(string ret_type) {
-    CodeGeneration::return_function(ret_type);
+void returnFunction(string ret_type, int reg) {
+    CodeGeneration::return_function(ret_type, reg);
+}
+void closeFunction(){
+    CodeGeneration::close_function();
 }
 
 void gen_local_var_to_default(SymbolsTable symbols_table, string id) {
@@ -153,6 +157,11 @@ int set_value_to_new_reg(string string_val) {
     return CodeGeneration::gen_new_reg_with_constant_val(val);
 }
 
+int set_string_val_to_new_reg(string string_val){
+    string_val = string_val.substr(1,string_val.length()-2);
+    return CodeGeneration::gen_new_reg_with_constant_string(string_val);
+}
+
 int genBinop(int reg1, string op, int reg2) {
     int ret_reg = CodeGeneration::get_new_reg();
     string llvm_op = CodeGeneration::convertBinop(op);
@@ -189,67 +198,104 @@ int finishLogicalExp(int reg1, string op, vector<pair<int, BranchLabelIndex>> &s
 }
 
 void openIf(int cond_reg) {
-    vector<pair<int, BranchLabelIndex>> sc_list;
-    scope_stack.setList(sc_list);
-    CodeGeneration::open_if(cond_reg,sc_list);
+    for(int i=scope_stack.scopes.size()-1; i>=0; i--){
+        if(scope_stack.scopes[i].is_if){
+            CodeGeneration::open_if(cond_reg,scope_stack.scopes[i].while_list);
+        }
+    }
 }
 
 void closeIf(){
-    vector<pair<int, BranchLabelIndex>> next_list;
-    scope_stack.setList(next_list);
-    CodeGeneration::close_block(next_list);
+    for(int i=scope_stack.scopes.size()-1; i>=0; i--){
+        if(scope_stack.scopes[i].is_if){
+            CodeGeneration::close_case(scope_stack.scopes[i].while_next_list);
+            last_if_next_list = scope_stack.scopes[i].while_next_list;
+            CodeGeneration::close_block(scope_stack.scopes[i].while_list);
+        }
+    }
 }
 
 void openElse() {
     for(int i=scope_stack.scopes.size()-1; i>=0; i--){
-        if(scope_stack.scopes[i].is_if){
-            auto sc_list = scope_stack.scopes[i].while_list;
-            auto next_list = scope_stack.scopes[i].while_next_list;
-            CodeGeneration::close_block(sc_list);
-            CodeGeneration::open_else(sc_list,next_list);
+        if(scope_stack.scopes[i].is_else){
+            scope_stack.scopes[i].while_next_list = last_if_next_list;
         }
     }
 }
 
 void closeBlock() {
+    CodeGeneration::close_block(last_if_next_list);
+}
+void closeElseBlock(){
     for(int i=scope_stack.scopes.size()-1; i>=0; i--){
-        if(scope_stack.scopes[i].is_if){
-            auto next_list = scope_stack.scopes[i].while_next_list;
-            CodeGeneration::close_block(next_list);
+        if(scope_stack.scopes[i].is_else){
+            CodeGeneration::close_block(scope_stack.scopes[i].while_next_list);
         }
     }
 }
 
+string genWhileLabel(){
+    return CodeGeneration::gen_new_label();
+}
+
 void openWhile(int cond_reg) {
-    vector<pair<int, BranchLabelIndex>> loop_end;
-    scope_stack.setList(loop_end);
-    CodeGeneration::open_while(cond_reg, loop_end);
+    CodeGeneration::open_while(cond_reg, scope_stack.scopes.back().while_list);
 }
 
 void closeWhile() {
-    vector<pair<int, BranchLabelIndex>> next_list;
-    scope_stack.setNextList(next_list);
-    CodeGeneration::close_while(scope_stack.scopes.back().while_list, next_list);
+    for(int i=scope_stack.scopes.size()-1; i>=0; i--){
+        if(scope_stack.scopes[i].is_while){
+            string while_label = scope_stack.scopes[i].while_label;
+            CodeGeneration::close_while(scope_stack.scopes[i].while_list,scope_stack.scopes[i].while_next_list, while_label);
+        }
+    }
 }
 
 void continueWhile() {
-    CodeGeneration::jmp_to_while_label();
+    for(int i=scope_stack.scopes.size()-1; i>=0; i--){
+        if(scope_stack.scopes[i].is_while){
+            string while_label = scope_stack.scopes[i].while_label;
+            CodeGeneration::jmp_to_constant_addr(while_label);
+        }
+    }
 }
 
 void breakBlock() {
     for(int i=scope_stack.scopes.size()-1; i>=0; i--){
-        if(scope_stack.scopes[i].is_while){
-            auto next_list = scope_stack.scopes[i].while_next_list;
-            CodeGeneration::close_block(next_list);
+        if(scope_stack.scopes[i].is_while || scope_stack.scopes[i].is_switch){
+            CodeGeneration::close_case(scope_stack.scopes[i].while_next_list);
         }
     }
 }
 
 string gen_label() {
-    return GEN_LABEL();
+    return CodeGeneration::gen_new_label();
 }
+
+void openSwitch() {
+    for(int i=scope_stack.scopes.size()-1; i>=0; i--){
+        if(scope_stack.scopes[i].is_switch){
+            CodeGeneration::close_case(scope_stack.scopes[i].while_list);
+        }
+    }
+}
+
+void closeCase() {
+    for(int i=scope_stack.scopes.size()-1; i>=0; i--){
+        if(scope_stack.scopes[i].is_switch){
+            CodeGeneration::close_case(scope_stack.scopes[i].while_next_list);
+        }
+    }
+}
+
 void switchBlock(int exp_reg, string label, vector<pair<string,string>>& case_list) {
-    CodeGeneration::switchBlock(exp_reg, label, case_list);
+    for(int i=scope_stack.scopes.size()-1; i>=0; i--){
+        if(scope_stack.scopes[i].is_switch){
+            CodeGeneration::close_block(scope_stack.scopes[i].while_list);
+            CodeGeneration::switchBlock(exp_reg, label, case_list);
+            CodeGeneration::close_block(scope_stack.scopes[i].while_next_list);
+        }
+    }
 }
 
 void checkByte(string byte, int lineno) {
@@ -336,4 +382,3 @@ void is_valid_continue(int lineno){
         exit(0);
     }
 }
-
