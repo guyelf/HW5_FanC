@@ -56,7 +56,7 @@ namespace CodeGeneration {
     pair<unordered_map<string, int>, int> define_function(string ret_type, string func_name, vector<string>& arg_names);
     void return_function(const string& cur_func_ret_type);
     int get_element_ptr(int base_ptr, int offset);
-    void _alloca(int reg_ptr, int _size);
+    void _allocate(int reg_ptr, int _size);
 };
 
 

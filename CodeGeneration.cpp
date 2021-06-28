@@ -18,9 +18,10 @@ namespace CodeGeneration {
     void initial_emits(){
         EMIT("declare i32 @printf(i8*, ...)");
         EMIT("declare void @exit(i32)");
+        EMIT_GLOBAL("@.division_by_zero_error = constant [23 x i8] c\"Error division by zero\\00\"");
         EMIT_GLOBAL("@.int_specifier = constant [4 x i8] c\"%d\\0A\\00\"");
         EMIT_GLOBAL("@.str_specifier = constant [4 x i8] c\"%s\\0A\\00\"");
-        EMIT_GLOBAL("@.division_by_zero_error = constant [23 x i8] c\"Error division by zero\\0\"");
+
 
         EMIT("define void @printi(i32) {");
         EMIT("%spec_ptr = getelementptr [4 x i8], [4 x i8]* @.int_specifier, i32 0, i32 0");
@@ -139,7 +140,8 @@ namespace CodeGeneration {
         if (!args.empty()){
             s_args = s_args.substr(0,s_args.size()-2);
         }
-        EMIT("call " + ret_val + " @" + func_name + " (" + s_args + ")");
+        string ret_type = ret_val == "VOID"? "void": "i32 "; //force correct calling types
+        EMIT("call " + ret_type + " @" + func_name + " (" + s_args + ")");
     }
     void division(int l_reg, int r_reg1, int r_reg2){
         int reg_res = get_new_reg();
@@ -240,10 +242,12 @@ namespace CodeGeneration {
         false_list = CodeBuffer::merge(false_jmp,false_list);
     }
 
+    //bpatchs the false_list from the IFs to here, merges the next_list of the else with the entire next_list from the block
     void open_else(vector<pair<int,BranchLabelIndex>>& false_list, vector<pair<int,BranchLabelIndex>>& next_list){
         int br_cond_addr = EMIT("br label @");
         auto exit_block_addr = CodeBuffer::makelist({br_cond_addr,FIRST});
         next_list = CodeBuffer::merge(exit_block_addr,next_list);
+
         bpatch_new_label(false_list);
     }
 
@@ -285,7 +289,7 @@ namespace CodeGeneration {
         value_list.push_back(case_val);
     }
 
-    //after the case statment excutes, jmp to the nex_list
+    //after the case statement executes, jmp to the next_list
     void close_case(vector<pair<int,BranchLabelIndex>>& next_list){
         auto finish_case_statm = EMIT("br label @");
         auto case_next_list = CodeBuffer::makelist({finish_case_statm, FIRST});
@@ -304,10 +308,11 @@ namespace CodeGeneration {
     void switchBlock(int exp_reg, string label, vector<pair<string,string>>& case_list){
         string s_case_list;
         for(auto c:case_list) {
-            s_case_list += "i32 " + c.first +" label %" + c.second + "\n";
+            int one_less = stoi(c.first) - 1;
+            s_case_list += "i32 " + to_string(one_less) +", label %" + c.second + "\n";
         }
         s_case_list = s_case_list.substr(0,s_case_list.size()-1);
-        EMIT("switch i32 " + t(exp_reg) + ", label %" + label + "[ " + s_case_list + " ]");
+        EMIT("switch i32 " + t(exp_reg) + ", label %" + label + " [ " + s_case_list + " ]");
     }
 //    vector<pair<int,BranchLabelIndex>> open_switch(){
 //        auto init_label = EMIT("br label @");
@@ -372,12 +377,12 @@ namespace CodeGeneration {
         unordered_map<string, int> arg_name_to_ptr;
         for(int i = 0; i < arg_names.size(); i++){
             int reg_ptr = get_new_reg();
-            _alloca(reg_ptr,0);
+            _allocate(reg_ptr,0);
             store_reg(i, reg_ptr);
             arg_name_to_ptr[arg_names[i]] = reg_ptr;
         }
         int stack_base_ptr = get_new_reg();
-        _alloca(stack_base_ptr,50);
+        _allocate(stack_base_ptr,50);
         return {arg_name_to_ptr, stack_base_ptr};
     }
 
@@ -393,8 +398,8 @@ namespace CodeGeneration {
         return ret_reg;
     }
 
-    void _alloca(int reg_ptr, int _size) {
+    void _allocate(int reg_ptr, int _size) {
         string s_size = _size ? ", i32 " + to_string(_size) : "";
-        EMIT(t(reg_ptr) + " = _alloca i32" + s_size);
+        EMIT(t(reg_ptr) + " = alloca i32" + s_size);
     }
 };

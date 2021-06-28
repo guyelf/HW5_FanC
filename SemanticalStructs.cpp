@@ -88,6 +88,7 @@ int callFunction(SymbolsTable& symbols_table, string func_name, vector<pair<stri
     auto function_type = symbols_table.GetFunctionType(func_name);
     string ret_type = function_type.first;
     vector<string> expected_arguments_type = function_type.second;
+
     vector<string> arguments_type;
     for(auto arg:arguments){
         arguments_type.push_back(arg.first);
