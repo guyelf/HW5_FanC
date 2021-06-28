@@ -308,8 +308,7 @@ namespace CodeGeneration {
     void switchBlock(int exp_reg, string label, vector<pair<string,string>>& case_list){
         string s_case_list;
         for(auto c:case_list) {
-            int one_less = stoi(c.first) - 1;
-            s_case_list += "i32 " + to_string(one_less) +", label %" + c.second + "\n";
+            s_case_list += "i32 " + c.first +", label %" + c.second + "\n";
         }
         s_case_list = s_case_list.substr(0,s_case_list.size()-1);
         EMIT("switch i32 " + t(exp_reg) + ", label %" + label + " [ " + s_case_list + " ]");
