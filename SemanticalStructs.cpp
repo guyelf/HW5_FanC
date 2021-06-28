@@ -65,6 +65,7 @@ void closeFunctionScope() {
 }
 
 void openScope(SymbolsTable& symbols_table, int is_while, int is_switch, int is_if, int is_else, string while_label) {
+//    EMIT("OPENSCOPEEEE::" + to_string(is_while) + to_string(is_switch)+ to_string(is_if)+ to_string(is_else) + "\n");
     while_count += is_while;
     switch_count += is_switch;
     auto last_scope = scope_stack.scopes.back();
@@ -91,8 +92,8 @@ int callFunction(SymbolsTable& symbols_table, string func_name, vector<pair<stri
     vector<string> expected_arguments_type = function_type.second;
 
     vector<string> arguments_type;
-    for(auto arg:arguments){
-        arguments_type.push_back(arg.first);
+    for(int i=arguments.size()-1;i>=0;i--){
+        arguments_type.push_back(arguments[i].first);
     }
     if(!isValidArgsFunctionCall(arguments_type, expected_arguments_type)){
         errorPrototypeMismatch(lineno, func_name, expected_arguments_type);
@@ -162,13 +163,19 @@ int set_string_val_to_new_reg(string string_val){
     return CodeGeneration::gen_new_reg_with_constant_string(string_val);
 }
 
-int genBinop(int reg1, string op, int reg2) {
+int genBinop(int reg1, string op, int reg2, string reg1_type,string reg2_type) {
     int ret_reg = CodeGeneration::get_new_reg();
     string llvm_op = CodeGeneration::convertBinop(op);
-    if(llvm_op == "div")
-        CodeGeneration::division(ret_reg, reg1, reg2);
+    if (llvm_op == "div") {
+    CodeGeneration::division(ret_reg, reg1, reg2);
+    }
     else {
-        CodeGeneration::gen_binop(ret_reg, llvm_op, reg1, reg2);
+        if(reg1_type == "BYTE" && reg2_type == "BYTE"){
+            CodeGeneration::gen_byte_binop(ret_reg,llvm_op, reg1, reg2);
+        }
+        else {
+            CodeGeneration::gen_binop(ret_reg, llvm_op, reg1, reg2);
+        }
     }
     return ret_reg;
 }
@@ -218,7 +225,7 @@ void closeIf(){
 void openElse() {
     for(int i=scope_stack.scopes.size()-1; i>=0; i--){
         if(scope_stack.scopes[i].is_else){
-            scope_stack.scopes[i].while_next_list = last_if_next_list;
+            scope_stack.scopes[i].while_next_list = CodeBuffer::merge(scope_stack.scopes[i].while_next_list, last_if_next_list);
         }
     }
 }
@@ -246,7 +253,8 @@ void closeWhile() {
     for(int i=scope_stack.scopes.size()-1; i>=0; i--){
         if(scope_stack.scopes[i].is_while){
             string while_label = scope_stack.scopes[i].while_label;
-            CodeGeneration::close_while(scope_stack.scopes[i].while_list,scope_stack.scopes[i].while_next_list, while_label);
+            bool is_break = scope_stack.scopes[i].is_break;
+            CodeGeneration::close_while(scope_stack.scopes[i].while_list,scope_stack.scopes[i].while_next_list, while_label, is_break);
         }
     }
 }
@@ -263,6 +271,7 @@ void continueWhile() {
 void breakBlock() {
     for(int i=scope_stack.scopes.size()-1; i>=0; i--){
         if(scope_stack.scopes[i].is_while || scope_stack.scopes[i].is_switch){
+            scope_stack.scopes[i].is_break = true;
             CodeGeneration::close_case(scope_stack.scopes[i].while_next_list);
         }
     }
@@ -289,6 +298,9 @@ void closeCase() {
 }
 
 void switchBlock(int exp_reg, string label, vector<pair<string,string>>& case_list) {
+    if(label == ""){
+        label = gen_label();
+    }
     for(int i=scope_stack.scopes.size()-1; i>=0; i--){
         if(scope_stack.scopes[i].is_switch){
             CodeGeneration::close_block(scope_stack.scopes[i].while_list);

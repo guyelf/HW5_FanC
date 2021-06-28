@@ -45,7 +45,7 @@ void set_local_var_to_reg(SymbolsTable symbols_table, string id, int r_reg);
 int set_value_to_new_reg(string string_val);
 int set_string_val_to_new_reg(string string_val);
 int get_reg_from_id(SymbolsTable symbols_table, string id);
-int genBinop(int reg1, string op, int reg2);
+int genBinop(int reg1, string op, int reg2, string reg1_type,string reg2_type);
 int genRelop(int reg1, string op, int reg2);
 int genNotExp(int reg1);
 void checkLogicalExp(int reg1, string op,vector<pair<int,BranchLabelIndex>> &sc_list);

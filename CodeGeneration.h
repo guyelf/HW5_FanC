@@ -31,7 +31,7 @@ namespace CodeGeneration {
     string bpatch_new_label(vector<pair<int,BranchLabelIndex>>& list);
     void compare(int l_reg, string op, int r_reg1, int r_reg2);
     int br_cond(int bool_reg);
-    void call_function(const string& ret_val, const string& func_name, const vector<pair<string,int>>& args, int ret_reg = -1);
+    void call_function(const string& ret_val, const string& func_name, vector<pair<string,int>>& args, int ret_reg = -1);
     void division(int l_reg, int r_reg1, int r_reg2);
     string check_logical_block_aux(int cur_val, vector<pair<int,BranchLabelIndex>>& list, BranchLabelIndex first, BranchLabelIndex second);
     string check_logical_block(int cur_val, const string& logical_op, vector<pair<int,BranchLabelIndex>>& list);
@@ -43,7 +43,7 @@ namespace CodeGeneration {
     void open_else(vector<pair<int,BranchLabelIndex>>& false_list, vector<pair<int,BranchLabelIndex>>& next_list);
     void open_while(int reg_cond,vector<pair<int,BranchLabelIndex>>& loop_end);
     string gen_new_label();
-    string close_while(vector<pair<int,BranchLabelIndex>>& loop_end, vector<pair<int,BranchLabelIndex>>& next_list, string while_label);
+    string close_while(vector<pair<int,BranchLabelIndex>>& loop_end, vector<pair<int,BranchLabelIndex>>& next_list, string while_label, bool is_break);
     void open_case(vector<string>& quad_list, vector<int>& value_list, int case_val);
     void close_case(vector<pair<int,BranchLabelIndex>>& next_list);
     int compare_vals(int val1, int val2);

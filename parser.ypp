@@ -153,7 +153,7 @@ Call : ID LPAREN ExpList RPAREN {
 ExpList : Exp {$$.exp_arguments.push_back({$1.type,$1.exp_reg});}
         | Exp COMMA ExpList {
             $$.exp_arguments = $3.exp_arguments;
-            $$.exp_arguments.push_back({$1.type,$1.exp_reg});
+            $$.exp_arguments.insert($$.exp_arguments.begin(), 1,{$1.type,$1.exp_reg});
         };
 Type : INT {$$.type="INT";}
         | BYTE {$$.type="BYTE";}
@@ -165,7 +165,7 @@ Exp : LPAREN Exp RPAREN {$$.type=$2.type; $$.exp_reg = $2.exp_reg;}
                 exit(0);
             }
             $$.type = getLargestRangeType($1.type,$3.type);
-            $$.exp_reg = genBinop($1.exp_reg, $2.string_val, $3.exp_reg);
+            $$.exp_reg = genBinop($1.exp_reg, $2.string_val, $3.exp_reg, $1.type,$3.type);
         }
         | Exp ADDBINOP Exp {
             if(!checkBinopValidity($1.type,$3.type)){
@@ -173,7 +173,7 @@ Exp : LPAREN Exp RPAREN {$$.type=$2.type; $$.exp_reg = $2.exp_reg;}
                 exit(0);
             }
             $$.type = getLargestRangeType($1.type,$3.type);
-            $$.exp_reg = genBinop($1.exp_reg, $2.string_val, $3.exp_reg);
+            $$.exp_reg = genBinop($1.exp_reg, $2.string_val, $3.exp_reg, $1.type,$3.type);
         }
         | ID {
             if(symbols_table.Contains($1.string_val)!=1 || symbols_table.GetType($1.string_val).find("->") != string::npos){

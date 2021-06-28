@@ -9,6 +9,7 @@ using namespace std;
 struct Scope{
     bool is_if;
     bool is_else;
+    bool is_break;
     bool is_switch;
     bool is_while;
     vector<pair<int,BranchLabelIndex>> while_list;

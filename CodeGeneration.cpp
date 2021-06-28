@@ -69,6 +69,15 @@ namespace CodeGeneration {
     void gen_binop(int l_reg, string op, int r_reg1, int r_reg2){
         EMIT(t(l_reg) + " = " + op + " i32 " + t(r_reg1) + ", " + t(r_reg2));
     }
+
+    void gen_byte_binop(int l_reg, string op, int r_reg1, int r_reg2){
+        int temp = get_new_reg();
+        int temp2 = get_new_reg();
+        gen_binop(temp, op, r_reg1, r_reg2);
+        truncate(temp2, temp,8);//truncates from 32 to 8 bytes
+        zext(l_reg,temp2,8);
+    }
+
     string convertType(const string& type) {
         return type == "VOID"? "void" : "i32";
     }
@@ -119,11 +128,7 @@ namespace CodeGeneration {
         zext(l_reg,res_reg,1);
     }
 
-    void gen_byte_binop(int l_reg, string op, int r_reg1, int r_reg2){
-        int temp = get_new_reg();
-        gen_binop(temp, op, r_reg1, r_reg2);
-        truncate(l_reg, temp,8); //truncates from 32 to 8 bytes
-    }
+
 
     string bpatch_new_label(vector<pair<int,BranchLabelIndex>>& list){
         string new_address = GEN_LABEL();
@@ -139,7 +144,7 @@ namespace CodeGeneration {
         return EMIT("br i1" + t(bool_reg) + ", label @, label @");
     }
 
-    void call_function(const string& ret_val, const string& func_name, const vector<pair<string,int>>& args, int ret_reg){
+    void call_function(const string& ret_val, const string& func_name, vector<pair<string,int>>& args, int ret_reg){
         string s_args;
         if(func_name == "print"){
             int base_reg = args[0].second;
@@ -148,7 +153,7 @@ namespace CodeGeneration {
                     to_string(base_reg) + ", i32 0, i32 0)";
         }
         else{
-            for(const auto& arg: args){
+            for(auto& arg: args){
                 s_args += convertType(arg.first) + " " + t(arg.second) + ", ";
             }
             // remove last ', ' from string
@@ -157,7 +162,7 @@ namespace CodeGeneration {
             }
         }
         string ret_type = ret_val == "VOID"? "void": "i32 "; //force correct calling types
-        string s_ret_reg =  ret_type == "void"? "" : t(ret_reg) + " = ";
+        string s_ret_reg =  ret_reg == -1 || ret_type == "void" ? "" : t(ret_reg) + " = ";
         EMIT( s_ret_reg + "call " + ret_type + " @" + func_name + " (" + s_args + ")");
     }
     void division(int l_reg, int r_reg1, int r_reg2){
@@ -168,12 +173,8 @@ namespace CodeGeneration {
         int division_by_zero = br_cond(reg_res);
 
         string true_label = GEN_LABEL();
-        vector<pair<string,int>> args_for_printf {{"i8*",get_new_reg()}};
-        EMIT(t(args_for_printf[0].second) + " = getelementptr [23 x i8], [23 x i8]* @.division_by_zero_error, i32 0, i32 0");
-        call_function("void", "printf", args_for_printf);
-        vector<pair<string,int>> args_for_exit {{"i32",get_new_reg()}};
-        set_reg_with_constant_val(args_for_exit[1].second,1);
-        call_function("void", "exit", args_for_printf);
+        EMIT("call void @print(i8* getelementptr ([23 x i8], [23 x i8]* @.division_by_zero_error, i32 0, i32 0))");
+        EMIT("call void @exit(i32 1)");
 
         int unreachable = EMIT("br label @");
         string false_label = GEN_LABEL();
@@ -213,11 +214,12 @@ namespace CodeGeneration {
         int second_br = EMIT("br label @");
         auto phi_result_list = CodeBuffer::makelist({sc_br, FIRST});
         phi_result_list = CodeBuffer::merge(CodeBuffer::makelist({second_br, FIRST}), phi_result_list);
-        if(logical_op == "or") {
-            call_phi(phi_result_list,  second_label, sc_label, res_reg);
+        if(logical_op == "and") {
+            call_phi(phi_result_list, sc_label,second_label, res_reg);
         }
         else{ //if(logical_op == "and") || (logical_op == "not" && while_list.empty(){
-            call_phi(phi_result_list, sc_label,second_label, res_reg);
+            call_phi(phi_result_list,  second_label, sc_label, res_reg);
+
         }
     }
 
@@ -277,12 +279,16 @@ namespace CodeGeneration {
         return new_label;
     }
 
-    string close_while(vector<pair<int,BranchLabelIndex>>& loop_end, vector<pair<int,BranchLabelIndex>>& next_list, string while_label){
-        jmp_to_constant_addr(while_label); //br label %loop_head
-
+    string close_while(vector<pair<int,BranchLabelIndex>>& loop_end, vector<pair<int,BranchLabelIndex>>& next_list, string while_label, bool is_break){
+        string next_label;
+        if(!is_break) {
+            jmp_to_constant_addr(while_label); //br label %loop_head
+            next_label = GEN_LABEL();
+        }
+        else{
+            next_label = gen_new_label();
+        }
         //bpatch the end of the while
-        string next_label = GEN_LABEL();
-
         BPATCH(next_list,next_label);
         BPATCH(loop_end, next_label);
         return next_label;
