@@ -281,6 +281,7 @@ namespace CodeGeneration {
 
     string close_while(vector<pair<int,BranchLabelIndex>>& loop_end, vector<pair<int,BranchLabelIndex>>& next_list, string while_label, bool is_break){
         string next_label;
+//        EMIT("CLOSE WHILE; IS BREAK" + to_string(is_break));
         if(!is_break) {
             jmp_to_constant_addr(while_label); //br label %loop_head
             next_label = GEN_LABEL();

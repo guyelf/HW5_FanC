@@ -208,6 +208,7 @@ void openIf(int cond_reg) {
     for(int i=scope_stack.scopes.size()-1; i>=0; i--){
         if(scope_stack.scopes[i].is_if){
             CodeGeneration::open_if(cond_reg,scope_stack.scopes[i].while_list);
+            break;
         }
     }
 }
@@ -218,6 +219,7 @@ void closeIf(){
             CodeGeneration::close_case(scope_stack.scopes[i].while_next_list);
             last_if_next_list = scope_stack.scopes[i].while_next_list;
             CodeGeneration::close_block(scope_stack.scopes[i].while_list);
+            break;
         }
     }
 }
@@ -226,6 +228,7 @@ void openElse() {
     for(int i=scope_stack.scopes.size()-1; i>=0; i--){
         if(scope_stack.scopes[i].is_else){
             scope_stack.scopes[i].while_next_list = CodeBuffer::merge(scope_stack.scopes[i].while_next_list, last_if_next_list);
+            break;
         }
     }
 }
@@ -237,6 +240,7 @@ void closeElseBlock(){
     for(int i=scope_stack.scopes.size()-1; i>=0; i--){
         if(scope_stack.scopes[i].is_else){
             CodeGeneration::close_block(scope_stack.scopes[i].while_next_list);
+            break;
         }
     }
 }
@@ -255,6 +259,7 @@ void closeWhile() {
             string while_label = scope_stack.scopes[i].while_label;
             bool is_break = scope_stack.scopes[i].is_break;
             CodeGeneration::close_while(scope_stack.scopes[i].while_list,scope_stack.scopes[i].while_next_list, while_label, is_break);
+            break;
         }
     }
 }
@@ -264,6 +269,7 @@ void continueWhile() {
         if(scope_stack.scopes[i].is_while){
             string while_label = scope_stack.scopes[i].while_label;
             CodeGeneration::jmp_to_constant_addr(while_label);
+            break;
         }
     }
 }
@@ -271,8 +277,11 @@ void continueWhile() {
 void breakBlock() {
     for(int i=scope_stack.scopes.size()-1; i>=0; i--){
         if(scope_stack.scopes[i].is_while || scope_stack.scopes[i].is_switch){
+//            EMIT("IS SWITCH"+ to_string(scope_stack.scopes[i].is_switch));
+//            EMIT("IS WHILE"+ to_string(scope_stack.scopes[i].is_while));
             scope_stack.scopes[i].is_break = true;
             CodeGeneration::close_case(scope_stack.scopes[i].while_next_list);
+            break;
         }
     }
 }
@@ -285,6 +294,7 @@ void openSwitch() {
     for(int i=scope_stack.scopes.size()-1; i>=0; i--){
         if(scope_stack.scopes[i].is_switch){
             CodeGeneration::close_case(scope_stack.scopes[i].while_list);
+            break;
         }
     }
 }
@@ -293,6 +303,7 @@ void closeCase() {
     for(int i=scope_stack.scopes.size()-1; i>=0; i--){
         if(scope_stack.scopes[i].is_switch){
             CodeGeneration::close_case(scope_stack.scopes[i].while_next_list);
+            break;
         }
     }
 }
@@ -306,6 +317,7 @@ void switchBlock(int exp_reg, string label, vector<pair<string,string>>& case_li
             CodeGeneration::close_block(scope_stack.scopes[i].while_list);
             CodeGeneration::switchBlock(exp_reg, label, case_list);
             CodeGeneration::close_block(scope_stack.scopes[i].while_next_list);
+            break;
         }
     }
 }

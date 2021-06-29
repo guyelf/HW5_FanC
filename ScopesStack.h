@@ -25,6 +25,7 @@ struct Scope{
     is_while(is_while),is_switch(is_switch), is_if(is_if), is_else(is_else), while_label(while_label) {
         while_list = vector<pair<int,BranchLabelIndex>> ();
         while_next_list = vector<pair<int,BranchLabelIndex>>();
+        is_break = false;
     };
 };
 
