@@ -257,8 +257,7 @@ void closeWhile() {
     for(int i=scope_stack.scopes.size()-1; i>=0; i--){
         if(scope_stack.scopes[i].is_while){
             string while_label = scope_stack.scopes[i].while_label;
-            bool is_break = scope_stack.scopes[i].is_break;
-            CodeGeneration::close_while(scope_stack.scopes[i].while_list,scope_stack.scopes[i].while_next_list, while_label, is_break);
+            CodeGeneration::close_while(scope_stack.scopes[i].while_list,scope_stack.scopes[i].while_next_list, while_label);
             break;
         }
     }
@@ -277,9 +276,6 @@ void continueWhile() {
 void breakBlock() {
     for(int i=scope_stack.scopes.size()-1; i>=0; i--){
         if(scope_stack.scopes[i].is_while || scope_stack.scopes[i].is_switch){
-//            EMIT("IS SWITCH"+ to_string(scope_stack.scopes[i].is_switch));
-//            EMIT("IS WHILE"+ to_string(scope_stack.scopes[i].is_while));
-            scope_stack.scopes[i].is_break = true;
             CodeGeneration::close_case(scope_stack.scopes[i].while_next_list);
             break;
         }

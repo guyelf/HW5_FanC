@@ -43,7 +43,7 @@ namespace CodeGeneration {
     void open_else(vector<pair<int,BranchLabelIndex>>& false_list, vector<pair<int,BranchLabelIndex>>& next_list);
     void open_while(int reg_cond,vector<pair<int,BranchLabelIndex>>& loop_end);
     string gen_new_label();
-    string close_while(vector<pair<int,BranchLabelIndex>>& loop_end, vector<pair<int,BranchLabelIndex>>& next_list, string while_label, bool is_break);
+    string close_while(vector<pair<int,BranchLabelIndex>>& loop_end, vector<pair<int,BranchLabelIndex>>& next_list, string while_label);
     void open_case(vector<string>& quad_list, vector<int>& value_list, int case_val);
     void close_case(vector<pair<int,BranchLabelIndex>>& next_list);
     int compare_vals(int val1, int val2);
